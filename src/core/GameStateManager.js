@@ -39,15 +39,29 @@ export class PlayingState extends GameState {
         // Update physics
         this.game.physics.update(deltaTime);
         
-        // Update level (includes enemies)
+        // Check for ring collisions
         const playerPos = this.game.player.getPosition();
+        const playerBounds = this.game.player.getBounds();
+        
+        // Update rings and check for collisions
+        for (let i = this.game.level.rings.length - 1; i >= 0; i--) {
+            const ring = this.game.level.rings[i];
+            if (ring.intersectsBounds(playerBounds)) {
+                // Remove the ring and call the collection callback
+                this.game.level.rings.splice(i, 1);
+                ring.mesh.removeFromParent();
+                this.game.onRingCollected();
+            }
+        }
+        
+        // Update level (includes enemies)
         if (this.game.level.update(deltaTime, playerPos)) {
             this.game.stateManager.transition('gameOver');
         }
     }
 
     render() {
-        this.game.renderer.render(this.game.scene, this.game.camera);
+        // Rendering is now handled in Game.animate()
     }
 }
 

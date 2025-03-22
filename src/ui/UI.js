@@ -1,83 +1,103 @@
+import * as THREE from 'three';
+
 export class UI {
     constructor() {
-        this.messageContainer = document.createElement('div');
-        this.messageContainer.style.position = 'absolute';
-        this.messageContainer.style.top = '50%';
-        this.messageContainer.style.left = '50%';
-        this.messageContainer.style.transform = 'translate(-50%, -50%)';
-        this.messageContainer.style.textAlign = 'center';
-        this.messageContainer.style.fontFamily = "'Press Start 2P', monospace";
-        this.messageContainer.style.fontSize = '24px';
-        this.messageContainer.style.color = '#fff';
-        this.messageContainer.style.textShadow = '2px 2px 4px rgba(0,0,0,0.5)';
-        this.messageContainer.style.display = 'none';
-        document.body.appendChild(this.messageContainer);
-
-        // Add font link
-        const fontLink = document.createElement('link');
-        fontLink.href = 'https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap';
-        fontLink.rel = 'stylesheet';
-        document.head.appendChild(fontLink);
-
+        this.score = 0;
+        this.timeRemaining = 60; // 60 seconds
+        this.isGameOver = false;
+        
+        // Create UI container
+        this.container = document.createElement('div');
+        this.container.style.position = 'fixed';
+        this.container.style.top = '20px';
+        this.container.style.left = '20px';
+        this.container.style.color = 'white';
+        this.container.style.fontFamily = 'Arial, sans-serif';
+        this.container.style.fontSize = '24px';
+        this.container.style.textShadow = '2px 2px 4px rgba(0,0,0,0.5)';
+        document.body.appendChild(this.container);
+        
         // Create score display
-        this.scoreContainer = document.createElement('div');
-        this.scoreContainer.style.position = 'absolute';
-        this.scoreContainer.style.top = '20px';
-        this.scoreContainer.style.right = '20px';
-        this.scoreContainer.style.fontFamily = "'Press Start 2P', monospace";
-        this.scoreContainer.style.fontSize = '16px';
-        this.scoreContainer.style.color = '#fff';
-        this.scoreContainer.style.textShadow = '2px 2px 4px rgba(0,0,0,0.5)';
-        document.body.appendChild(this.scoreContainer);
+        this.scoreElement = document.createElement('div');
+        this.scoreElement.style.marginBottom = '10px';
+        this.container.appendChild(this.scoreElement);
+        
+        // Create timer display
+        this.timerElement = document.createElement('div');
+        this.container.appendChild(this.timerElement);
+        
+        // Create message overlay
+        this.messageOverlay = document.createElement('div');
+        this.messageOverlay.style.position = 'fixed';
+        this.messageOverlay.style.top = '50%';
+        this.messageOverlay.style.left = '50%';
+        this.messageOverlay.style.transform = 'translate(-50%, -50%)';
+        this.messageOverlay.style.color = 'white';
+        this.messageOverlay.style.fontFamily = 'Arial, sans-serif';
+        this.messageOverlay.style.fontSize = '36px';
+        this.messageOverlay.style.textAlign = 'center';
+        this.messageOverlay.style.textShadow = '2px 2px 4px rgba(0,0,0,0.5)';
+        this.messageOverlay.style.display = 'none';
+        document.body.appendChild(this.messageOverlay);
+        
+        this.updateScore();
+        this.updateTimer();
     }
-
-    showGameOver() {
-        const skull = `
-            ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢀⣀⣀⣀⣀⣀⣀⡀⠀⠀⠀⠀⠀
-            ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢀⣠⣴⣾⣿⣿⣿⣿⣿⣿⣿⣿⣷⣦⣄⡀⠀
-            ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢀⣠⣾⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣷⡄
-            ⠀⠀⠀⠀⠀⠀⠀⠀⢀⣴⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⡇
-            ⠀⠀⠀⠀⠀⠀⢀⣴⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⠁
-            ⠀⠀⠀⠀⢀⣴⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⡏⠀
-            ⠀⠀⢀⣴⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⡿⠁⠀
-            ⠀⣰⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⡟⠁⠀⠀
-            ⢰⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⡿⠋⠀⠀⠀⠀
-            ⠈⠻⢿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⠟⠉⠀⠀⠀⠀⠀⠀
-            ⠀⠀⠀⠉⠻⢿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⡿⠛⠁⠀⠀⠀⠀⠀⠀⠀⠀
-            ⠀⠀⠀⠀⠀⠀⠉⠛⠿⣿⣿⣿⣿⣿⣿⣿⡿⠟⠁⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
-            ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠉⠙⠛⠋⠉⠁⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀`;
-
-        this.messageContainer.innerHTML = `
-            <pre style="font-size: 12px; line-height: 12px; color: #ff0000; text-shadow: 0 0 10px #ff0000;">${skull}</pre>
-            <div style="margin-top: 20px; font-size: 36px; color: #ff0000; text-shadow: 0 0 10px #ff0000;">GAME OVER</div>
-            <div style="margin-top: 20px; font-size: 16px;">Press SPACE to restart</div>`;
-        this.messageContainer.style.display = 'block';
-
-        // Add restart listener
-        const handleRestart = (event) => {
-            if (event.code === 'Space') {
-                document.removeEventListener('keydown', handleRestart);
-                this.hideMessage();
-                window.dispatchEvent(new CustomEvent('gameRestart'));
-            }
-        };
-        document.addEventListener('keydown', handleRestart);
+    
+    updateScore() {
+        this.scoreElement.textContent = `Score: ${this.score}`;
     }
-
-    showMessage(message) {
-        this.messageContainer.textContent = message;
-        this.messageContainer.style.display = 'block';
+    
+    updateTimer() {
+        const minutes = Math.floor(this.timeRemaining / 60);
+        const seconds = Math.floor(this.timeRemaining % 60);
+        this.timerElement.textContent = `Time: ${minutes}:${seconds.toString().padStart(2, '0')}`;
     }
-
+    
+    addScore(points) {
+        this.score += points;
+        this.updateScore();
+    }
+    
+    startTimer() {
+        this.timeRemaining = 60;
+        this.isGameOver = false;
+        this.messageOverlay.style.display = 'none';
+        this.updateTimer();
+    }
+    
+    updateTime(deltaTime) {
+        if (this.isGameOver) return;
+        
+        this.timeRemaining -= deltaTime;
+        if (this.timeRemaining <= 0) {
+            this.timeRemaining = 0;
+            this.isGameOver = true;
+            this.showGameOver();
+        }
+        this.updateTimer();
+    }
+    
+    showMessage(text) {
+        this.messageOverlay.textContent = text;
+        this.messageOverlay.style.display = 'block';
+    }
+    
     hideMessage() {
-        this.messageContainer.style.display = 'none';
+        this.messageOverlay.style.display = 'none';
     }
-
-    updateScore(rings) {
-        this.scoreContainer.textContent = `Rings: ${rings}`;
+    
+    showGameOver() {
+        this.showMessage(`Game Over!\nFinal Score: ${this.score}\nPress Space to Restart`);
     }
-
-    showError(message = 'Something went wrong. Please refresh the page.') {
+    
+    showError(message = 'An error occurred. Please refresh the page.') {
         this.showMessage(message);
+    }
+    
+    reset() {
+        this.score = 0;
+        this.updateScore();
+        this.startTimer();
     }
 } 

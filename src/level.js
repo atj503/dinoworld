@@ -1,20 +1,39 @@
 import * as THREE from 'three';
 import { Enemy } from './enemy.js';
-import { PhysicsSystem } from './physics/PhysicsSystem.js';
+import { MaterialManager } from './materials/MaterialManager.js';
+import { CollisionSystem } from './physics/CollisionSystem.js';
+
+class Ring {
+    constructor(mesh, position, rotation) {
+        this.mesh = mesh;
+        this.position = position;
+        this.rotation = rotation;
+        this.boundingSphere = new THREE.Sphere(position, 1.5); // Use ring radius
+    }
+
+    intersectsBounds(playerBounds) {
+        // Update bounding sphere position to match mesh
+        this.boundingSphere.center.copy(this.mesh.position);
+        
+        // Check if player's bounding box intersects ring's bounding sphere
+        return playerBounds.intersectsSphere(this.boundingSphere);
+    }
+}
 
 export class Level {
-    constructor(scene, physics, onRingCollected) {
+    constructor(scene, onRingCollected) {
         this.scene = scene;
-        this.physics = physics;
         this.onRingCollected = onRingCollected;
-        this.levelData = null;
-        this.ground = null;
+        this.collisionSystem = new CollisionSystem();
+        this.materialManager = new MaterialManager();
+        
+        // Collections
         this.rings = [];
         this.enemies = [];
         this.platforms = [];
         this.obstacles = [];
+        this.buildings = [];
         this.trees = [];
-        this.textureLoader = new THREE.TextureLoader();
     }
 
     async loadLevel(levelNumber) {
@@ -36,374 +55,307 @@ export class Level {
                 typeof levelData.playerStart.y !== 'number' || 
                 typeof levelData.playerStart.z !== 'number') {
                 console.error('Invalid player start position in level data:', levelData.playerStart);
-                // Provide default start position
                 return { x: 0, y: 0, z: 0 };
             }
             
             // Create level elements
+            await this.createGround();
             await this.createTerrain(levelData.terrain);
             this.createRings(levelData.rings || []);
             this.createEnemies(levelData.enemies || []);
+            await this.createTrees(); // Add trees around perimeter
             
             return levelData.playerStart;
         } catch (error) {
             console.error('Error loading level:', error);
-            // Return safe default coordinates if loading fails
             return { x: 0, y: 0, z: 0 };
         }
     }
 
     async createGround() {
-        // Create a large ground plane
         const groundSize = 1000;
-        const geometry = new THREE.PlaneGeometry(groundSize, groundSize);
-        
-        // Create a procedural texture
-        const canvas = document.createElement('canvas');
-        canvas.width = 1024;
-        canvas.height = 1024;
-        const context = canvas.getContext('2d');
-        
-        // Fill with base color
-        context.fillStyle = '#4a8505';
-        context.fillRect(0, 0, canvas.width, canvas.height);
-        
-        // Add noise pattern for grass texture
-        for (let i = 0; i < 10000; i++) {
-            const x = Math.random() * canvas.width;
-            const y = Math.random() * canvas.height;
-            const size = Math.random() * 4 + 1;
-            context.fillStyle = Math.random() > 0.5 ? '#3a7000' : '#5a9010';
-            context.fillRect(x, y, size, size);
-        }
-        
-        const texture = new THREE.CanvasTexture(canvas);
-        texture.wrapS = THREE.RepeatWrapping;
-        texture.wrapT = THREE.RepeatWrapping;
-        texture.repeat.set(50, 50);
-        
-        const material = new THREE.MeshStandardMaterial({
-            map: texture,
-            roughness: 0.8,
-            metalness: 0.1,
-            color: 0x88aa88
-        });
+        const geometry = new THREE.PlaneGeometry(groundSize, groundSize, 64, 64);
+        const material = await this.materialManager.createGroundMaterial();
         
         this.ground = new THREE.Mesh(geometry, material);
         this.ground.rotation.x = -Math.PI / 2;
-        this.ground.position.y = -0.1; // Slightly below 0 to avoid z-fighting
+        this.ground.position.y = -0.1;
         this.ground.receiveShadow = true;
         this.scene.add(this.ground);
         
-        // Add ground to physics system
-        this.physics.addBody(this.ground, 'static');
+        // Add ground to collision system
+        this.collisionSystem.addStaticBody(this.ground, 'ground');
     }
 
-    createBoundary() {
-        const { radius, treeCount, treeTypes, spacing } = this.levelData.environment.boundary;
-        const angleStep = (2 * Math.PI) / treeCount;
+    async createBuilding(data) {
+        const { position, rotation, size, color } = data;
         
-        for (let i = 0; i < treeCount; i++) {
-            const angle = i * angleStep;
-            const x = radius * Math.cos(angle);
-            const z = radius * Math.sin(angle);
-            
-            // Randomly select tree type
-            const treeType = treeTypes[Math.floor(Math.random() * treeTypes.length)];
-            this.createTree(x, z, treeType);
+        // Create building group
+        const building = new THREE.Group();
+        
+        // Create main structure with collision
+        const buildingGeometry = new THREE.BoxGeometry(size.width, size.height, size.depth);
+        const buildingMaterial = await this.materialManager.createBuildingMaterial(color);
+        const buildingMesh = new THREE.Mesh(buildingGeometry, buildingMaterial);
+        buildingMesh.castShadow = true;
+        buildingMesh.receiveShadow = true;
+        building.add(buildingMesh);
+        
+        // Create windows
+        const windowMaterial = await this.materialManager.createWindowMaterial();
+        const windowSize = { width: 1, height: 1.5, depth: 0.1 };
+        const windowSpacing = 2;
+        const floorsCount = Math.floor(size.height / 3);
+        const windowsPerSide = Math.floor(size.width / 2.5);
+        
+        for (let floor = 0; floor < floorsCount; floor++) {
+            for (let w = 0; w < windowsPerSide; w++) {
+                ['front', 'back', 'left', 'right'].forEach(side => {
+                    const windowGeometry = new THREE.BoxGeometry(
+                        windowSize.width,
+                        windowSize.height,
+                        windowSize.depth
+                    );
+                    const windowMesh = new THREE.Mesh(windowGeometry, windowMaterial);
+                    
+                    const y = floor * 3 + 2;
+                    let x, z;
+                    
+                    switch (side) {
+                        case 'front':
+                            x = (w - windowsPerSide/2 + 0.5) * windowSpacing;
+                            z = size.depth/2 + 0.1;
+                            break;
+                        case 'back':
+                            x = (w - windowsPerSide/2 + 0.5) * windowSpacing;
+                            z = -size.depth/2 - 0.1;
+                            windowMesh.rotation.y = Math.PI;
+                            break;
+                        case 'left':
+                            x = -size.width/2 - 0.1;
+                            z = (w - windowsPerSide/2 + 0.5) * windowSpacing;
+                            windowMesh.rotation.y = -Math.PI/2;
+                            break;
+                        case 'right':
+                            x = size.width/2 + 0.1;
+                            z = (w - windowsPerSide/2 + 0.5) * windowSpacing;
+                            windowMesh.rotation.y = Math.PI/2;
+                            break;
+                    }
+                    
+                    windowMesh.position.set(x, y, z);
+                    building.add(windowMesh);
+                });
+            }
         }
+        
+        // Position and rotate building
+        building.position.set(position.x, position.y, position.z);
+        building.rotation.set(
+            rotation?.x || 0,
+            rotation?.y || 0,
+            rotation?.z || 0
+        );
+        
+        this.scene.add(building);
+        this.buildings.push(building);
+        
+        // Add building to collision system
+        this.collisionSystem.addStaticBody(buildingMesh, 'building');
     }
 
-    createTree(x, z, type) {
-        // Create simple tree geometry (can be replaced with models later)
-        const trunkGeometry = new THREE.CylinderGeometry(0.5, 0.8, 5);
-        const trunkMaterial = new THREE.MeshStandardMaterial({ color: 0x4a2810 });
-        const trunk = new THREE.Mesh(trunkGeometry, trunkMaterial);
-        
-        let foliageGeometry;
-        if (type === 'pine') {
-            foliageGeometry = new THREE.ConeGeometry(3, 8, 8);
-        } else { // oak
-            foliageGeometry = new THREE.SphereGeometry(4, 8, 8);
-        }
-        
-        const foliageMaterial = new THREE.MeshStandardMaterial({ color: 0x2d5a27 });
-        const foliage = new THREE.Mesh(foliageGeometry, foliageMaterial);
-        
-        trunk.position.set(x, 2.5, z);
-        foliage.position.set(x, 8, z);
-        
-        trunk.castShadow = true;
-        foliage.castShadow = true;
-        
-        this.scene.add(trunk);
-        this.scene.add(foliage);
-        
-        this.trees.push(trunk, foliage);
-        
-        // Add trees to physics system
-        this.physics.addBody(trunk, 'static');
-        this.physics.addBody(foliage, 'static');
-    }
-
-    async createTerrain(terrainData) {
-        const { platforms, obstacles } = terrainData;
+    async createTerrain(terrainData = {}) {
+        const { platforms = [], obstacles = [], buildings = [] } = terrainData;
         
         // Create platforms
         for (const platformData of platforms) {
-            const platform = await this.createPlatform(platformData);
+            const geometry = new THREE.BoxGeometry(
+                platformData.size.width,
+                platformData.size.height,
+                platformData.size.depth
+            );
+            const material = await this.materialManager.createBuildingMaterial(platformData.color);
+            const platform = new THREE.Mesh(geometry, material);
+            
+            platform.position.set(
+                platformData.position.x,
+                platformData.position.y,
+                platformData.position.z
+            );
+            platform.rotation.set(
+                platformData.rotation?.x || 0,
+                platformData.rotation?.y || 0,
+                platformData.rotation?.z || 0
+            );
+            
+            platform.castShadow = true;
+            platform.receiveShadow = true;
+            
+            this.scene.add(platform);
             this.platforms.push(platform);
-            this.physics.addBody(platform, 'static');
+            
+            // Add platform to collision system
+            this.collisionSystem.addStaticBody(platform, 'platform');
+        }
+        
+        // Create buildings
+        for (const buildingData of buildings) {
+            await this.createBuilding(buildingData);
         }
         
         // Create obstacles
         for (const obstacleData of obstacles) {
-            const obstacle = await this.createObstacle(obstacleData);
+            const geometry = obstacleData.type === 'cylinder' 
+                ? new THREE.CylinderGeometry(
+                    obstacleData.size.radius,
+                    obstacleData.size.radius,
+                    obstacleData.size.height,
+                    32
+                )
+                : new THREE.BoxGeometry(
+                    obstacleData.size.width,
+                    obstacleData.size.height,
+                    obstacleData.size.depth
+                );
+            
+            const material = await this.materialManager.createBuildingMaterial(obstacleData.color);
+            const obstacle = new THREE.Mesh(geometry, material);
+            
+            obstacle.position.set(
+                obstacleData.position.x,
+                obstacleData.position.y,
+                obstacleData.position.z
+            );
+            obstacle.rotation.set(
+                obstacleData.rotation?.x || 0,
+                obstacleData.rotation?.y || 0,
+                obstacleData.rotation?.z || 0
+            );
+            
+            obstacle.castShadow = true;
+            obstacle.receiveShadow = true;
+            
+            this.scene.add(obstacle);
             this.obstacles.push(obstacle);
-            this.physics.addBody(obstacle, 'static');
-        }
-    }
-
-    async createPlatform(data) {
-        const { position, rotation, size, color } = data;
-        
-        let geometry;
-        if (data.type === 'flat') {
-            geometry = new THREE.BoxGeometry(size.width, size.height, size.depth);
-        } else if (data.type === 'ramp') {
-            // Create custom geometry for ramp
-            geometry = new THREE.BoxGeometry(size.width, size.height, size.depth);
-            geometry.translate(0, size.height / 2, 0);
-        }
-        
-        const material = new THREE.MeshStandardMaterial({
-            color: parseInt(color),
-            roughness: 0.7,
-            metalness: 0.3
-        });
-        
-        const platform = new THREE.Mesh(geometry, material);
-        platform.position.set(position.x, position.y, position.z);
-        platform.rotation.set(
-            THREE.MathUtils.degToRad(rotation.x),
-            THREE.MathUtils.degToRad(rotation.y),
-            THREE.MathUtils.degToRad(rotation.z)
-        );
-        
-        platform.castShadow = true;
-        platform.receiveShadow = true;
-        
-        this.scene.add(platform);
-        return platform;
-    }
-
-    async createObstacle(data) {
-        const { type, position, rotation, size, color } = data;
-        
-        if (type === 'building') {
-            // Create building with windows
-            const building = new THREE.Group();
             
-            // Main structure
-            const buildingGeometry = new THREE.BoxGeometry(size.width, size.height, size.depth);
-            const buildingMaterial = new THREE.MeshStandardMaterial({
-                color: parseInt(color),
-                roughness: 0.7,
-                metalness: 0.3
-            });
-            const buildingMesh = new THREE.Mesh(buildingGeometry, buildingMaterial);
-            
-            // Add windows
-            const windowMaterial = new THREE.MeshStandardMaterial({
-                color: 0x88ccff,
-                emissive: 0x88ccff,
-                emissiveIntensity: 0.8,
-                metalness: 0.9,
-                roughness: 0.1
-            });
-            
-            const windowSize = { width: 1, height: 1.5, depth: 0.1 };
-            const windowSpacing = 2;
-            const floorsCount = Math.floor(size.height / 3);
-            const windowsPerSide = Math.floor(size.width / 2.5);
-            
-            // Create windows for each side
-            for (let floor = 0; floor < floorsCount; floor++) {
-                for (let w = 0; w < windowsPerSide; w++) {
-                    ['front', 'back', 'left', 'right'].forEach(side => {
-                        const windowGeometry = new THREE.BoxGeometry(
-                            windowSize.width,
-                            windowSize.height,
-                            windowSize.depth
-                        );
-                        const windowMesh = new THREE.Mesh(windowGeometry, windowMaterial);
-                        
-                        const y = floor * 3 + 2;
-                        let x, z;
-                        
-                        switch (side) {
-                            case 'front':
-                                x = (w - windowsPerSide/2 + 0.5) * windowSpacing;
-                                z = size.depth/2 + 0.1;
-                                break;
-                            case 'back':
-                                x = (w - windowsPerSide/2 + 0.5) * windowSpacing;
-                                z = -size.depth/2 - 0.1;
-                                windowMesh.rotation.y = Math.PI;
-                                break;
-                            case 'left':
-                                x = -size.width/2 - 0.1;
-                                z = (w - windowsPerSide/2 + 0.5) * windowSpacing;
-                                windowMesh.rotation.y = -Math.PI/2;
-                                break;
-                            case 'right':
-                                x = size.width/2 + 0.1;
-                                z = (w - windowsPerSide/2 + 0.5) * windowSpacing;
-                                windowMesh.rotation.y = Math.PI/2;
-                                break;
-                        }
-                        
-                        windowMesh.position.set(x, y, z);
-                        building.add(windowMesh);
-                    });
-                }
-            }
-            
-            building.add(buildingMesh);
-            building.position.set(position.x, position.y, position.z);
-            building.rotation.set(
-                THREE.MathUtils.degToRad(rotation.x),
-                THREE.MathUtils.degToRad(rotation.y),
-                THREE.MathUtils.degToRad(rotation.z)
-            );
-            
-            this.scene.add(building);
-            
-            // Add collision bodies for each wall
-            building.children.forEach((child, index) => {
-                if (child.geometry && child.geometry.type.includes('BoxGeometry')) {
-                    // Only add physics to the wall meshes
-                    if (index < 4) {  // First 4 children are the walls
-                        this.physics.addBody(child, 'static');
-                    }
-                }
-            });
-            
-            return building;
-            
-        } else if (type === 'cylinder') {
-            const geometry = new THREE.CylinderGeometry(size.radius, size.radius, size.height, 32);
-            const material = new THREE.MeshStandardMaterial({
-                color: parseInt(color),
-                roughness: 0.7,
-                metalness: 0.3
-            });
-            
-            const cylinder = new THREE.Mesh(geometry, material);
-            cylinder.position.set(position.x, position.y, position.z);
-            cylinder.rotation.set(
-                THREE.MathUtils.degToRad(rotation.x),
-                THREE.MathUtils.degToRad(rotation.y),
-                THREE.MathUtils.degToRad(rotation.z)
-            );
-            
-            cylinder.castShadow = true;
-            cylinder.receiveShadow = true;
-            
-            this.scene.add(cylinder);
-            
-            // Add cylinder collision
-            this.physics.addBody(cylinder, 'static');
-            
-            return cylinder;
+            // Add obstacle to collision system
+            this.collisionSystem.addStaticBody(obstacle, 'obstacle');
         }
     }
 
     createRings(ringsData = []) {
-        // Clear existing rings
-        for (const ring of this.rings) {
-            if (ring.geometry) ring.geometry.dispose();
-            if (ring.material) ring.material.dispose();
-            this.scene.remove(ring);
-        }
-        this.rings = [];
-
-        // Create ring geometry and material only once
         const ringGeometry = new THREE.TorusGeometry(1.5, 0.2, 16, 32);
         const ringMaterial = new THREE.MeshStandardMaterial({
             color: 0xffd700,
             metalness: 0.8,
             roughness: 0.2,
             emissive: 0xffd700,
-            emissiveIntensity: 0.2
+            emissiveIntensity: 0.5
         });
-
-        // Create new rings
+        
         for (const data of ringsData) {
-            const ring = new THREE.Mesh(ringGeometry, ringMaterial);
-            ring.position.set(data.position.x, data.position.y, data.position.z);
-            ring.rotation.set(
+            const ringMesh = new THREE.Mesh(ringGeometry, ringMaterial);
+            ringMesh.position.set(data.position.x, data.position.y, data.position.z);
+            ringMesh.rotation.set(
                 data.rotation?.x || 0,
                 data.rotation?.y || 0,
                 data.rotation?.z || 0
             );
-            ring.castShadow = true;
-            ring.receiveShadow = true;
+            ringMesh.castShadow = true;
+            ringMesh.receiveShadow = true;
             
-            // Add to scene and tracking array
-            this.scene.add(ring);
+            this.scene.add(ringMesh);
+            
+            // Create Ring instance with collision detection
+            const ring = new Ring(
+                ringMesh,
+                new THREE.Vector3(data.position.x, data.position.y, data.position.z),
+                new THREE.Vector3(data.rotation?.x || 0, data.rotation?.y || 0, data.rotation?.z || 0)
+            );
             this.rings.push(ring);
-            
-            // Add to physics system as static body
-            this.physics.addStaticBody({
-                mesh: ring,
-                type: 'ring',
-                boundingBox: new THREE.Box3().setFromObject(ring)
-            });
         }
     }
 
     createEnemies(enemiesData = []) {
-        // Clear existing enemies
-        for (const enemy of this.enemies) {
-            if (enemy.mesh) {
-                if (enemy.mesh.geometry) enemy.mesh.geometry.dispose();
-                if (enemy.mesh.material) enemy.mesh.material.dispose();
-                this.scene.remove(enemy.mesh);
-            }
-        }
-        this.enemies = [];
-
-        // Create new enemies
         for (const data of enemiesData) {
             const enemy = new Enemy(this.scene, data);
             this.enemies.push(enemy);
             
-            // Add to physics system
-            this.physics.addBody({
-                mesh: enemy.mesh,
-                type: 'enemy',
-                update: (deltaTime) => enemy.update(deltaTime),
-                boundingBox: new THREE.Box3().setFromObject(enemy.mesh)
-            });
+            // Add enemy to collision system
+            this.collisionSystem.addDynamicBody(enemy.mesh, 'enemy');
         }
     }
 
-    collectRing(ring) {
-        const index = this.rings.indexOf(ring);
-        if (index !== -1) {
-            this.scene.remove(ring);
-            this.physics.removeBody(ring);
-            this.rings.splice(index, 1);
-            if (this.onRingCollected) {
-                this.onRingCollected();
+    async createTrees() {
+        const treeGeometry = new THREE.CylinderGeometry(0, 4, 20, 8);
+        const trunkGeometry = new THREE.CylinderGeometry(1, 1, 8, 8);
+        
+        const leafMaterial = new THREE.MeshStandardMaterial({
+            color: 0x2d5a27,
+            roughness: 0.8,
+            metalness: 0.1
+        });
+        
+        const trunkMaterial = new THREE.MeshStandardMaterial({
+            color: 0x4a2f1b,
+            roughness: 0.9,
+            metalness: 0.1
+        });
+
+        // Create trees around the perimeter
+        const perimeter = 100; // Size of play area
+        const spacing = 15; // Space between trees
+        const offset = 5; // Random offset range
+
+        for (let x = -perimeter; x <= perimeter; x += spacing) {
+            for (let z = -perimeter; z <= perimeter; z += spacing) {
+                // Only place trees on the perimeter
+                if (Math.abs(x) < perimeter - spacing && Math.abs(z) < perimeter - spacing) continue;
+
+                const randomOffset = new THREE.Vector3(
+                    (Math.random() - 0.5) * offset,
+                    0,
+                    (Math.random() - 0.5) * offset
+                );
+
+                const tree = new THREE.Group();
+
+                // Create trunk
+                const trunk = new THREE.Mesh(trunkGeometry, trunkMaterial);
+                trunk.position.y = 4;
+                trunk.castShadow = true;
+                trunk.receiveShadow = true;
+                tree.add(trunk);
+
+                // Create leaves
+                const leaves = new THREE.Mesh(treeGeometry, leafMaterial);
+                leaves.position.y = 14;
+                leaves.castShadow = true;
+                leaves.receiveShadow = true;
+                tree.add(leaves);
+
+                // Position the tree
+                tree.position.set(
+                    x + randomOffset.x,
+                    0,
+                    z + randomOffset.z
+                );
+
+                // Add random rotation for variety
+                tree.rotation.y = Math.random() * Math.PI * 2;
+
+                this.scene.add(tree);
+                this.trees.push(tree);
+
+                // Add tree to collision system
+                this.collisionSystem.addStaticBody(tree, 'tree');
             }
         }
     }
 
     update(deltaTime, playerPosition) {
-        // Update physics
-        this.physics.update(deltaTime);
+        // Update physics and collisions
+        this.collisionSystem.update(deltaTime);
         
         // Update enemies
         for (const enemy of this.enemies) {
@@ -412,34 +364,8 @@ export class Level {
         
         // Animate rings
         for (const ring of this.rings) {
-            ring.rotation.y += deltaTime;
+            ring.mesh.rotation.y += deltaTime;
         }
-    }
-
-    clearLevel() {
-        // Remove all objects from the scene and physics system
-        [...this.rings, ...this.platforms, ...this.obstacles, ...this.trees].forEach(object => {
-            this.scene.remove(object);
-            this.physics.removeBody(object);
-        });
-        
-        this.enemies.forEach(enemy => {
-            enemy.cleanup();
-            this.physics.removeBody(enemy.mesh);
-        });
-        
-        if (this.ground) {
-            this.scene.remove(this.ground);
-            this.physics.removeBody(this.ground);
-        }
-        
-        // Clear arrays
-        this.rings = [];
-        this.enemies = [];
-        this.platforms = [];
-        this.obstacles = [];
-        this.trees = [];
-        this.ground = null;
     }
 
     reset() {
@@ -459,20 +385,16 @@ export class Level {
             this.scene.remove(object);
         }
 
-        // Reset physics system
-        if (this.physics) {
-            this.physics.reset();
-        }
-
-        // Clear arrays
+        // Reset collections
         this.rings = [];
         this.enemies = [];
         this.platforms = [];
         this.obstacles = [];
+        this.buildings = [];
         this.trees = [];
         
         // Reset systems
-        this.physics.reset();
-        this.textureLoader = new THREE.TextureLoader();
+        this.collisionSystem.reset();
+        this.materialManager.dispose();
     }
 } 

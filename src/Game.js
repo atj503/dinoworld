@@ -24,6 +24,7 @@ export class Game {
         this.stateManager = new GameStateManager();
         this.stateManager.addState(new PlayingState(this));
         this.stateManager.addState(new GameOverState(this));
+        this.stateManager.transition('playing');
 
         // Game state
         this.clock = new THREE.Clock();
@@ -35,7 +36,8 @@ export class Game {
             ArrowUp: false,
             ArrowLeft: false,
             ArrowDown: false,
-            ArrowRight: false
+            ArrowRight: false,
+            ' ': false // Space bar for jumping
         };
         
         // Setup systems
@@ -45,6 +47,7 @@ export class Game {
     }
 
     onRingCollected() {
+        this.ui.addScore(10);
         // Check if all rings are collected
         if (this.level.rings.length === 0) {
             this.ui.showMessage('Level Complete!');
@@ -67,22 +70,25 @@ export class Game {
         this.renderer.setPixelRatio(window.devicePixelRatio);
         this.renderer.shadowMap.enabled = true;
         this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+        this.renderer.outputColorSpace = THREE.SRGBColorSpace;
+        this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
+        this.renderer.toneMappingExposure = 1.0;
     }
 
     setupLighting() {
-        // Ambient light
+        // Strong ambient light to ensure everything is visible
         const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
         this.scene.add(ambientLight);
 
         // Main directional light (sun)
         const directionalLight = new THREE.DirectionalLight(0xffffff, 1.0);
-        directionalLight.position.set(50, 100, 20);
+        directionalLight.position.set(50, 100, 50);
         directionalLight.castShadow = true;
         
-        // Improve shadow quality
+        // Improved shadow settings
         directionalLight.shadow.mapSize.width = 2048;
         directionalLight.shadow.mapSize.height = 2048;
-        directionalLight.shadow.camera.near = 0.5;
+        directionalLight.shadow.camera.near = 0.1;
         directionalLight.shadow.camera.far = 500;
         directionalLight.shadow.camera.left = -100;
         directionalLight.shadow.camera.right = 100;
@@ -92,15 +98,9 @@ export class Game {
         
         this.scene.add(directionalLight);
 
-        // Fill light
-        const fillLight = new THREE.DirectionalLight(0x8888ff, 0.5);
-        fillLight.position.set(-50, 30, -20);
-        this.scene.add(fillLight);
-
-        // Ground bounce light
-        const bounceLight = new THREE.DirectionalLight(0x88aa88, 0.3);
-        bounceLight.position.set(0, -10, 0);
-        this.scene.add(bounceLight);
+        // Add hemisphere light for better ambient lighting
+        const hemiLight = new THREE.HemisphereLight(0xffffff, 0x444444, 0.6);
+        this.scene.add(hemiLight);
     }
 
     setupEventListeners() {
@@ -128,6 +128,12 @@ export class Game {
                     this.keys.d = true;
                     this.keys.ArrowRight = true;
                     break;
+                case ' ':
+                    this.keys[' '] = true;
+                    if (this.stateManager.currentState.name === 'gameOver') {
+                        this.reset();
+                    }
+                    break;
             }
         });
 
@@ -154,6 +160,9 @@ export class Game {
                     this.keys.d = false;
                     this.keys.ArrowRight = false;
                     break;
+                case ' ':
+                    this.keys[' '] = false;
+                    break;
             }
         });
 
@@ -179,7 +188,6 @@ export class Game {
 
     async init() {
         try {
-            // Create loading message
             this.ui.showMessage('Loading game...');
             
             // Load level first and ensure we have valid start coordinates
@@ -219,15 +227,14 @@ export class Game {
                 throw new Error('Player or player mesh not initialized');
             }
             
-            // Hide loading message
-            this.ui.hideMessage();
-            
             // Start game
+            this.ui.reset();
+            this.ui.hideMessage();
             this.stateManager.transition('playing');
         } catch (error) {
             console.error('Failed to initialize game:', error);
             this.ui.showError('Unable to load level. Please refresh the page.');
-            throw error; // Re-throw to trigger global error handler
+            throw error;
         }
     }
 
@@ -250,7 +257,6 @@ export class Game {
         console.log('Starting game...');
         this.init().then(() => {
             console.log('Game initialized successfully');
-            // Start animation loop
             this.animate();
         }).catch(error => {
             console.error('Failed to start game:', error);
@@ -263,10 +269,17 @@ export class Game {
             requestAnimationFrame(() => this.animate());
             const deltaTime = this.clock.getDelta();
             
-            // Only update if we have required components
             if (this.stateManager && this.renderer && this.scene && this.camera) {
+                // Update game state
                 this.stateManager.update(deltaTime);
-                this.stateManager.render();
+                
+                // Update UI timer
+                if (this.stateManager.currentState.name === 'playing') {
+                    this.ui.updateTime(deltaTime);
+                }
+                
+                // Render scene
+                this.renderer.render(this.scene, this.camera);
             }
         } catch (error) {
             console.error('Error in animation loop:', error);

@@ -11,13 +11,27 @@ export class Player {
         this.currentAction = null;
         this.speed = 0.15;
         this.turnSpeed = 0.05;
+        this.jumpForce = 8;
         this.velocity = new THREE.Vector3();
         this.direction = new THREE.Vector3();
         this.lastRotationY = 0;
-        this.cameraOffset = new THREE.Vector3(0, 2, 0);
+        this.isGrounded = true;
+        this.isJumping = false;
+        this.jumpCooldown = 0;
+        this.jumpCooldownTime = 0.1; // 100ms cooldown between jumps
+        
+        // Camera settings
+        this.cameraOffset = new THREE.Vector3(1.5, 2, 0); // Offset to the right
+        this.cameraLookOffset = new THREE.Vector3(0, 0.5, -5); // Look ahead and slightly up
+        this.cameraBobAmount = 0.05;
+        this.cameraBobSpeed = 5;
+        this.cameraBobTime = 0;
+        
+        // Physics
         this.boundingBox = new THREE.Box3();
         this.tempBox = new THREE.Box3();
         this.collisionPadding = 0.2;
+        this.gravity = 20;
         this.isLoaded = false;
         
         // Create a temporary cube as placeholder
@@ -30,9 +44,10 @@ export class Player {
     }
 
     createTemporaryModel() {
-        // Create a simple cube as placeholder
         const geometry = new THREE.BoxGeometry(1, 2, 2);
-        const material = new THREE.MeshPhongMaterial({ color: 0x7da87d });
+        const material = new THREE.MeshBasicMaterial({ 
+            color: 0x00ff00  // Bright green for visibility
+        });
         const cube = new THREE.Mesh(geometry, material);
         cube.castShadow = true;
         cube.receiveShadow = true;
@@ -42,11 +57,9 @@ export class Player {
         this.mesh = container;
         this.scene.add(this.mesh);
         
-        // Set up basic collision box for temporary model
         this.boundingBox.setFromObject(cube);
         this.collisionSize = new THREE.Vector3(1, 2, 2);
         
-        // Initial camera setup
         this.updateCameraPosition();
     }
 
@@ -60,22 +73,15 @@ export class Player {
                 return;
             }
             
-            // Store current position and rotation
             const currentPosition = this.mesh.position.clone();
             const currentRotation = this.mesh.rotation.clone();
             
-            // Remove temporary model
             this.scene.remove(this.mesh);
             
-            // Scale and position the new model
             model.scale.setScalar(0.01);
             
-            // Setup materials
-            const material = new THREE.MeshPhongMaterial({
-                color: 0x7da87d,
-                specular: 0x333333,
-                shininess: 30,
-                flatShading: false
+            const material = new THREE.MeshBasicMaterial({
+                color: 0x00ff00  // Bright green for visibility
             });
 
             model.traverse((child) => {
@@ -86,20 +92,17 @@ export class Player {
                 }
             });
             
-            // Create new container
             const container = new THREE.Object3D();
             model.rotation.y = Math.PI;
             container.add(model);
             container.rotation.y = Math.PI;
             
-            // Restore position and rotation
             container.position.copy(currentPosition);
             container.rotation.copy(currentRotation);
             
             this.mesh = container;
             this.scene.add(this.mesh);
             
-            // Setup animations
             if (model.animations.length > 0) {
                 this.mixer = new THREE.AnimationMixer(model);
                 model.animations.forEach(clip => {
@@ -110,7 +113,6 @@ export class Player {
                 }
             }
             
-            // Update collision box
             this.boundingBox.setFromObject(model);
             const size = this.boundingBox.getSize(new THREE.Vector3());
             this.collisionSize = new THREE.Vector3(
@@ -123,7 +125,6 @@ export class Player {
             
         } catch (error) {
             console.error('Error loading Stegosaurus model:', error);
-            // Keep using the temporary model if loading fails
             this.isLoaded = true;
         }
     }
@@ -142,26 +143,23 @@ export class Player {
         }
     }
 
-    update(delta, keysPressed, obstacles) {
+    update(deltaTime, keysPressed, obstacles) {
         if (!this.mesh || !this.isLoaded) return;
 
         try {
-            // Update animation mixer
             if (this.mixer) {
-                this.mixer.update(delta);
+                this.mixer.update(deltaTime);
             }
 
-            // Store current position for collision detection
             const previousPosition = this.mesh.position.clone();
             
-            // Reset velocity
+            // Reset horizontal velocity
             this.velocity.x = 0;
             this.velocity.z = 0;
 
-            // Store last rotation
             this.lastRotationY = this.mesh.rotation.y;
 
-            // Handle rotation first
+            // Handle rotation
             if (keysPressed['a'] || keysPressed['ArrowLeft']) {
                 this.mesh.rotation.y += this.turnSpeed;
             }
@@ -169,7 +167,7 @@ export class Player {
                 this.mesh.rotation.y -= this.turnSpeed;
             }
 
-            // Calculate movement based on key presses
+            // Handle movement
             if (keysPressed['w'] || keysPressed['ArrowUp']) {
                 this.velocity.z = -this.speed;
             }
@@ -177,26 +175,53 @@ export class Player {
                 this.velocity.z = this.speed;
             }
 
-            // Apply movement in the direction the model is facing
+            // Update jump cooldown
+            if (this.jumpCooldown > 0) {
+                this.jumpCooldown -= deltaTime;
+            }
+
+            // Handle jumping
+            if (keysPressed[' '] && this.isGrounded && !this.isJumping && this.jumpCooldown <= 0) {
+                this.velocity.y = this.jumpForce;
+                this.isGrounded = false;
+                this.isJumping = true;
+                this.jumpCooldown = this.jumpCooldownTime;
+            }
+
+            // Apply gravity
+            if (!this.isGrounded) {
+                this.velocity.y -= this.gravity * deltaTime;
+            }
+
+            // Apply movement in facing direction
             if (this.velocity.length() > 0) {
                 this.direction.set(0, 0, 1).applyQuaternion(this.mesh.quaternion);
                 const movement = this.direction.multiplyScalar(this.velocity.z);
+                movement.y = this.velocity.y; // Add vertical movement
                 
-                // Try to move
                 this.mesh.position.add(movement);
                 
-                // Check for collisions
+                // Check collisions
                 if (this.checkCollisions(obstacles)) {
-                    // If collision occurred, revert to previous position
                     this.mesh.position.copy(previousPosition);
                 }
             }
 
-            // Update camera position
-            this.updateCameraPosition();
+            // Ground check
+            if (this.mesh.position.y <= 0) {
+                this.mesh.position.y = 0;
+                this.velocity.y = 0;
+                this.isGrounded = true;
+                this.isJumping = false;
+            }
+
+            // Update camera with bob effect
+            this.updateCameraPosition(deltaTime);
 
             // Play appropriate animation
-            if (this.velocity.length() > 0) {
+            if (this.isJumping) {
+                this.playAnimation('jump');
+            } else if (this.velocity.length() > 0) {
                 this.playAnimation('walk');
             } else {
                 this.playAnimation('idle');
@@ -211,21 +236,17 @@ export class Player {
         if (!obstacles || !this.mesh || !this.isLoaded) return false;
         
         try {
-            // Update player's bounding box
             this.boundingBox.setFromCenterAndSize(
                 this.mesh.position,
                 this.collisionSize
             );
             
-            // Add padding to bounding box for smoother collision response
             this.boundingBox.min.subScalar(this.collisionPadding);
             this.boundingBox.max.addScalar(this.collisionPadding);
             
-            // Check collision with each obstacle
             for (const obstacle of obstacles) {
                 if (!obstacle.geometry) continue;
                 
-                // Get obstacle's world transform
                 this.tempBox.setFromObject(obstacle);
                 
                 if (this.boundingBox.intersectsBox(this.tempBox)) {
@@ -240,28 +261,60 @@ export class Player {
         return false;
     }
 
-    updateCameraPosition() {
+    updateCameraPosition(deltaTime = 0) {
         if (!this.mesh || !this.camera || !this.isLoaded) return;
         
         try {
-            // Position camera at player's head height
-            const cameraPosition = this.mesh.position.clone().add(this.cameraOffset);
+            // Calculate camera bob
+            if (this.velocity.length() > 0 && this.isGrounded) {
+                this.cameraBobTime += deltaTime * this.cameraBobSpeed;
+                const bobOffset = Math.sin(this.cameraBobTime) * this.cameraBobAmount;
+                this.cameraOffset.y = 2 + bobOffset;
+            } else {
+                this.cameraOffset.y = 2;
+            }
+            
+            // Calculate camera position
+            const cameraPosition = this.mesh.position.clone();
+            const offsetVector = this.cameraOffset.clone();
+            offsetVector.applyQuaternion(this.mesh.quaternion);
+            cameraPosition.add(offsetVector);
+            
+            // Calculate look target
+            const lookTarget = this.mesh.position.clone();
+            const lookOffset = this.cameraLookOffset.clone();
+            lookOffset.applyQuaternion(this.mesh.quaternion);
+            lookTarget.add(lookOffset);
+            
+            // Update camera
             this.camera.position.copy(cameraPosition);
+            this.camera.lookAt(lookTarget);
             
-            // Calculate look direction
-            const lookDirection = new THREE.Vector3(0, 0, -1);
-            lookDirection.applyQuaternion(this.mesh.quaternion);
-            
-            // Set camera look target
-            const target = cameraPosition.clone().add(lookDirection);
-            this.camera.lookAt(target);
         } catch (error) {
             console.error('Error updating camera position:', error);
         }
     }
 
     getPosition() {
-        return this.mesh ? this.mesh.position.clone() : new THREE.Vector3();
+        return this.mesh ? this.mesh.position : new THREE.Vector3();
+    }
+
+    getBounds() {
+        if (!this.mesh || !this.isLoaded) {
+            return new THREE.Box3();
+        }
+        
+        // Update bounding box with current position and size
+        this.boundingBox.setFromCenterAndSize(
+            this.mesh.position,
+            this.collisionSize
+        );
+        
+        // Add padding for better collision detection
+        this.boundingBox.min.subScalar(this.collisionPadding);
+        this.boundingBox.max.addScalar(this.collisionPadding);
+        
+        return this.boundingBox;
     }
 
     reset(startPosition) {
@@ -270,6 +323,9 @@ export class Player {
         try {
             this.mesh.position.copy(startPosition);
             this.mesh.rotation.set(0, 0, 0);
+            this.velocity.set(0, 0, 0);
+            this.isGrounded = true;
+            this.isJumping = false;
             this.updateCameraPosition();
         } catch (error) {
             console.error('Error resetting player:', error);
