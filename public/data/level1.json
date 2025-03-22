@@ -23,108 +23,78 @@
     "terrain": {
         "platforms": [
             {
-                "type": "flat",
-                "position": { "x": 15, "y": 2, "z": 15 },
-                "rotation": { "x": 0, "y": 0, "z": 0 },
-                "size": { "width": 10, "height": 0.5, "depth": 10 },
-                "color": "0x808080"
+                "position": { "x": 5, "y": 1, "z": 8 },
+                "size": { "width": 4, "height": 2, "depth": 4 },
+                "color": "0x8b4513",
+                "rotation": { "x": 0, "y": 0.2, "z": 0 }
             },
             {
-                "type": "ramp",
-                "position": { "x": 5, "y": 1, "z": 15 },
-                "rotation": { "x": 15, "y": 0, "z": 0 },
-                "size": { "width": 10, "height": 0.5, "depth": 10 },
-                "color": "0x808080"
+                "position": { "x": -7, "y": 1.5, "z": -6 },
+                "size": { "width": 5, "height": 3, "depth": 5 },
+                "color": "0x8b4513",
+                "rotation": { "x": 0, "y": -0.3, "z": 0 }
+            }
+        ],
+        "buildings": [
+            {
+                "position": { "x": 20, "y": 0, "z": 20 },
+                "size": { "width": 8, "height": 12, "depth": 8 },
+                "color": "0x8b4513",
+                "rotation": { "x": 0, "y": 0.4, "z": 0 }
+            },
+            {
+                "position": { "x": -18, "y": 0, "z": -15 },
+                "size": { "width": 10, "height": 15, "depth": 10 },
+                "color": "0x8b4513",
+                "rotation": { "x": 0, "y": -0.2, "z": 0 }
             }
         ],
         "obstacles": [
             {
-                "type": "building",
-                "position": { "x": -20, "y": 7.5, "z": -20 },
-                "rotation": { "x": 0, "y": 45, "z": 0 },
-                "size": { "width": 15, "height": 15, "depth": 15 },
-                "color": "0x4a4a4a"
-            },
-            {
-                "type": "building",
-                "position": { "x": 20, "y": 10, "z": -20 },
-                "rotation": { "x": 0, "y": -30, "z": 0 },
-                "size": { "width": 10, "height": 20, "depth": 10 },
-                "color": "0x6a6a6a"
-            },
-            {
                 "type": "cylinder",
-                "position": { "x": 0, "y": 5, "z": -30 },
-                "rotation": { "x": 0, "y": 0, "z": 0 },
-                "size": { "radius": 3, "height": 10 },
-                "color": "0x8a8a8a"
+                "position": { "x": 15, "y": 2, "z": -12 },
+                "size": { "radius": 1.5, "height": 4 },
+                "color": "0x8b4513"
+            },
+            {
+                "type": "box",
+                "position": { "x": -12, "y": 1.5, "z": 15 },
+                "size": { "width": 3, "height": 3, "depth": 3 },
+                "color": "0x8b4513",
+                "rotation": { "x": 0, "y": 0.5, "z": 0 }
             }
         ]
     },
     "rings": [
         {
-            "position": { "x": 15, "y": 5, "z": 15 },
-            "rotation": { "x": 0, "y": 45, "z": 0 }
+            "position": { "x": 10, "y": 2, "z": 15 },
+            "rotation": { "x": 0, "y": 0, "z": 0 }
         },
         {
-            "position": { "x": -20, "y": 15, "z": -20 },
-            "rotation": { "x": 90, "y": 0, "z": 0 }
+            "position": { "x": -8, "y": 2, "z": -12 },
+            "rotation": { "x": 0, "y": 0.5, "z": 0 }
         },
         {
-            "position": { "x": 20, "y": 12, "z": -20 },
-            "rotation": { "x": 0, "y": 60, "z": 0 }
+            "position": { "x": 15, "y": 4, "z": -8 },
+            "rotation": { "x": 0, "y": 1, "z": 0 }
         },
         {
-            "position": { "x": 0, "y": 8, "z": -30 },
-            "rotation": { "x": 45, "y": 0, "z": 0 }
-        },
-        {
-            "position": { "x": -15, "y": 6, "z": 15 },
-            "rotation": { "x": 0, "y": -30, "z": 0 }
-        },
-        {
-            "position": { "x": 30, "y": 4, "z": 0 },
-            "rotation": { "x": 0, "y": 90, "z": 0 }
-        },
-        {
-            "position": { "x": -30, "y": 7, "z": 0 },
-            "rotation": { "x": 60, "y": 0, "z": 0 }
+            "position": { "x": -12, "y": 3, "z": 10 },
+            "rotation": { "x": 0, "y": -0.5, "z": 0 }
         }
     ],
     "enemies": [
         {
-            "type": "patrol",
-            "position": { "x": 10, "y": 1, "z": 0 },
-            "patrolPoints": [
-                { "x": 10, "y": 1, "z": 0 },
-                { "x": 10, "y": 1, "z": 20 },
-                { "x": 30, "y": 1, "z": 20 },
-                { "x": 30, "y": 1, "z": 0 }
-            ],
-            "speed": 0.05
+            "position": { "x": 12, "y": 0, "z": 12 },
+            "patrolRadius": 4
         },
         {
-            "type": "patrol",
-            "position": { "x": -10, "y": 1, "z": -10 },
-            "patrolPoints": [
-                { "x": -10, "y": 1, "z": -10 },
-                { "x": -30, "y": 1, "z": -10 },
-                { "x": -30, "y": 1, "z": -30 },
-                { "x": -10, "y": 1, "z": -30 }
-            ],
-            "speed": 0.06
+            "position": { "x": -10, "y": 0, "z": -10 },
+            "patrolRadius": 5
         },
         {
-            "type": "chase",
-            "position": { "x": -20, "y": 1, "z": 20 },
-            "detectionRange": 20,
-            "speed": 0.07
-        },
-        {
-            "type": "chase",
-            "position": { "x": 20, "y": 1, "z": -20 },
-            "detectionRange": 25,
-            "speed": 0.065
+            "position": { "x": 8, "y": 0, "z": -15 },
+            "patrolRadius": 3
         }
     ]
 } 

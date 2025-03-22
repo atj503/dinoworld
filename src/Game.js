@@ -45,6 +45,31 @@ export class Game {
         this.setupRenderer();
         this.setupLighting();
         this.setupEventListeners();
+
+        // Setup game state manager with new conditions
+        this.gameStateManager = {
+            gameOver: false,
+            gameOverReason: '',
+            score: 0,
+            timeRemaining: 120, // 2 minutes
+            
+            triggerGameOver: (reason) => {
+                this.gameStateManager.gameOver = true;
+                this.gameStateManager.gameOverReason = reason;
+                this.showGameOverScreen(reason);
+            },
+            
+            reset: () => {
+                this.gameStateManager.gameOver = false;
+                this.gameStateManager.gameOverReason = '';
+                this.gameStateManager.score = 0;
+                this.gameStateManager.timeRemaining = 120;
+            }
+        };
+
+        // Initialize scene with improved lighting for volcanic environment
+        this.initScene();
+        this.initLighting();
     }
 
     onRingCollected() {
@@ -74,42 +99,40 @@ export class Game {
         this.renderer.outputColorSpace = THREE.SRGBColorSpace;
         this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
         this.renderer.toneMappingExposure = 1.2;
-        this.renderer.setClearColor(0x87CEEB); // Sky blue
+        this.renderer.setClearColor(0x666666); // Darker sky color for volcanic atmosphere
     }
 
     setupLighting() {
-        // Ambient light for overall scene brightness
-        const ambientLight = new THREE.AmbientLight(0xffffff, 0.7);
-        this.scene.add(ambientLight);
-
         // Main directional light (sun)
-        const directionalLight = new THREE.DirectionalLight(0xffffff, 1.2);
-        directionalLight.position.set(-50, 100, 50);
-        directionalLight.castShadow = true;
+        this.directionalLight = new THREE.DirectionalLight(0xffa95c, 1);
+        this.directionalLight.position.set(-50, 100, 50);
+        this.directionalLight.castShadow = true;
         
-        // Improved shadow settings
-        directionalLight.shadow.mapSize.width = 4096;
-        directionalLight.shadow.mapSize.height = 4096;
-        directionalLight.shadow.camera.near = 0.1;
-        directionalLight.shadow.camera.far = 500;
-        directionalLight.shadow.camera.left = -100;
-        directionalLight.shadow.camera.right = 100;
-        directionalLight.shadow.camera.top = 100;
-        directionalLight.shadow.camera.bottom = -100;
-        directionalLight.shadow.bias = -0.0005;
-        directionalLight.shadow.normalBias = 0.02;
+        // Improve shadow quality
+        this.directionalLight.shadow.mapSize.width = 4096;
+        this.directionalLight.shadow.mapSize.height = 4096;
+        this.directionalLight.shadow.camera.near = 0.5;
+        this.directionalLight.shadow.camera.far = 500;
+        this.directionalLight.shadow.camera.left = -100;
+        this.directionalLight.shadow.camera.right = 100;
+        this.directionalLight.shadow.camera.top = 100;
+        this.directionalLight.shadow.camera.bottom = -100;
+        this.directionalLight.shadow.bias = -0.0001;
         
-        this.scene.add(directionalLight);
+        this.scene.add(this.directionalLight);
 
-        // Add hemisphere light for better ambient lighting
-        const hemiLight = new THREE.HemisphereLight(0xffffff, 0x444444, 0.8);
-        hemiLight.position.set(0, 100, 0);
-        this.scene.add(hemiLight);
+        // Ambient light for base visibility
+        this.ambientLight = new THREE.AmbientLight(0x666666, 0.5);
+        this.scene.add(this.ambientLight);
 
-        // Add a secondary fill light
-        const fillLight = new THREE.DirectionalLight(0xffffff, 0.5);
-        fillLight.position.set(50, 50, -50);
-        this.scene.add(fillLight);
+        // Add red point light for lava glow
+        this.lavaLight = new THREE.PointLight(0xff4400, 1, 50);
+        this.lavaLight.position.set(0, 2, 0);
+        this.scene.add(this.lavaLight);
+
+        // Add hemisphere light for sky color
+        this.hemisphereLight = new THREE.HemisphereLight(0xffeeb1, 0xff4400, 0.6);
+        this.scene.add(this.hemisphereLight);
     }
 
     setupEventListeners() {
@@ -299,6 +322,109 @@ export class Game {
         } catch (error) {
             console.error('Error in animation loop:', error);
             this.ui.showError('Something went wrong. Please refresh the page.');
+        }
+    }
+
+    initScene() {
+        // ... existing scene initialization ...
+
+        // Set a darker sky color for volcanic atmosphere
+        this.renderer.setClearColor(0x666666);
+    }
+
+    initLighting() {
+        // Main directional light (sun)
+        this.directionalLight = new THREE.DirectionalLight(0xffa95c, 1);
+        this.directionalLight.position.set(-50, 100, 50);
+        this.directionalLight.castShadow = true;
+        
+        // Improve shadow quality
+        this.directionalLight.shadow.mapSize.width = 4096;
+        this.directionalLight.shadow.mapSize.height = 4096;
+        this.directionalLight.shadow.camera.near = 0.5;
+        this.directionalLight.shadow.camera.far = 500;
+        this.directionalLight.shadow.camera.left = -100;
+        this.directionalLight.shadow.camera.right = 100;
+        this.directionalLight.shadow.camera.top = 100;
+        this.directionalLight.shadow.camera.bottom = -100;
+        this.directionalLight.shadow.bias = -0.0001;
+        
+        this.scene.add(this.directionalLight);
+
+        // Ambient light for base visibility
+        this.ambientLight = new THREE.AmbientLight(0x666666, 0.5);
+        this.scene.add(this.ambientLight);
+
+        // Add red point light for lava glow
+        this.lavaLight = new THREE.PointLight(0xff4400, 1, 50);
+        this.lavaLight.position.set(0, 2, 0);
+        this.scene.add(this.lavaLight);
+
+        // Add hemisphere light for sky color
+        this.hemisphereLight = new THREE.HemisphereLight(0xffeeb1, 0xff4400, 0.6);
+        this.scene.add(this.hemisphereLight);
+    }
+
+    showGameOverScreen(reason) {
+        // Create or update game over UI
+        if (!this.gameOverElement) {
+            this.gameOverElement = document.createElement('div');
+            this.gameOverElement.style.position = 'absolute';
+            this.gameOverElement.style.top = '50%';
+            this.gameOverElement.style.left = '50%';
+            this.gameOverElement.style.transform = 'translate(-50%, -50%)';
+            this.gameOverElement.style.backgroundColor = 'rgba(0, 0, 0, 0.8)';
+            this.gameOverElement.style.color = 'white';
+            this.gameOverElement.style.padding = '20px';
+            this.gameOverElement.style.borderRadius = '10px';
+            this.gameOverElement.style.textAlign = 'center';
+            document.body.appendChild(this.gameOverElement);
+        }
+
+        this.gameOverElement.innerHTML = `
+            <h2>Game Over</h2>
+            <p>${reason}</p>
+            <p>Score: ${this.gameStateManager.score}</p>
+            <button onclick="location.reload()">Try Again</button>
+        `;
+        this.gameOverElement.style.display = 'block';
+    }
+
+    update(deltaTime) {
+        if (this.gameStateManager.gameOver) {
+            // Slow down camera movement when game is over
+            if (this.camera) {
+                this.camera.position.y *= 0.95;
+            }
+            return;
+        }
+
+        // Update game timer
+        this.gameStateManager.timeRemaining -= deltaTime;
+        if (this.gameStateManager.timeRemaining <= 0) {
+            this.gameStateManager.triggerGameOver('Time\'s up!');
+            return;
+        }
+
+        // Update UI
+        if (this.ui) {
+            this.ui.updateTimer(Math.max(0, Math.floor(this.gameStateManager.timeRemaining)));
+            this.ui.updateScore(this.gameStateManager.score);
+        }
+
+        // Update level and check collisions
+        if (this.level) {
+            this.level.update(deltaTime, this.player.position);
+        }
+
+        // Update player movement and camera
+        if (this.player) {
+            this.player.update(deltaTime);
+        }
+
+        // Animate lava light
+        if (this.lavaLight) {
+            this.lavaLight.intensity = 1 + Math.sin(Date.now() * 0.002) * 0.2;
         }
     }
 } 

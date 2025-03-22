@@ -39,11 +39,11 @@ export class PlayingState extends GameState {
         // Update physics
         this.game.physics.update(deltaTime);
         
-        // Check for ring collisions
+        // Check for ring collisions and update level
         const playerBounds = this.game.player.getBounds();
         this.game.level.checkRingCollisions(playerBounds);
         
-        // Update level (includes enemies)
+        // Update level (includes environment and enemies)
         const playerPos = this.game.player.getPosition();
         if (this.game.level.update(deltaTime, playerPos)) {
             this.game.stateManager.transition('gameOver');

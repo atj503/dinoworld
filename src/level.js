@@ -2,6 +2,8 @@ import * as THREE from 'three';
 import { Enemy } from './enemy.js';
 import { MaterialManager } from './materials/MaterialManager.js';
 import { CollisionSystem } from './physics/CollisionSystem.js';
+import { Environment } from './environment/Environment.js';
+import { Raptor } from './enemies/Raptor.js';
 
 class Ring {
     constructor(mesh, position, rotation) {
@@ -43,9 +45,12 @@ export class Level {
         this.collisionSystem = new CollisionSystem();
         this.materialManager = new MaterialManager();
         
+        // Initialize environment
+        this.environment = new Environment(scene, this.physics);
+        
         // Collections
         this.rings = [];
-        this.enemies = [];
+        this.raptors = [];
         this.platforms = [];
         this.obstacles = [];
         this.buildings = [];
@@ -78,7 +83,7 @@ export class Level {
             await this.createGround();
             await this.createTerrain(levelData.terrain);
             this.createRings(levelData.rings || []);
-            this.createEnemies(levelData.enemies || []);
+            this.createRaptors(levelData.enemies || []); // Replace enemies with raptors
             await this.createTrees(); // Add trees around perimeter
             
             return levelData.playerStart;
@@ -292,14 +297,22 @@ export class Level {
         }
     }
 
-    createEnemies(enemiesData = []) {
-        for (const data of enemiesData) {
-            const enemy = new Enemy(this.scene, data);
-            this.enemies.push(enemy);
-            
-            // Add enemy to collision system
-            this.collisionSystem.addDynamicBody(enemy.mesh, 'enemy');
-        }
+    createRaptors(enemyData) {
+        // Clear existing raptors
+        this.raptors.forEach(raptor => raptor.dispose());
+        this.raptors = [];
+        
+        // Create new raptors from enemy data
+        enemyData.forEach(data => {
+            const position = new THREE.Vector3(data.position.x, data.position.y, data.position.z);
+            const raptor = new Raptor(
+                this.scene,
+                this.physics,
+                position,
+                data.patrolRadius || 5
+            );
+            this.raptors.push(raptor);
+        });
     }
 
     async createTrees() {
@@ -369,29 +382,11 @@ export class Level {
         }
     }
 
-    update(deltaTime, playerPosition) {
-        // Update rings and check for collisions
-        for (let i = this.rings.length - 1; i >= 0; i--) {
-            const ring = this.rings[i];
-            ring.update(deltaTime);
-        }
-
-        // Update enemies
-        for (const enemy of this.enemies) {
-            enemy.update(deltaTime, playerPosition);
-            if (enemy.checkCollision(playerPosition)) {
-                return true; // Game over
-            }
-        }
-
-        return false;
-    }
-
     checkRingCollisions(playerBounds) {
+        // Check each ring for collision
         for (let i = this.rings.length - 1; i >= 0; i--) {
             const ring = this.rings[i];
             if (ring.intersectsBounds(playerBounds)) {
-                // Remove the ring and call the collection callback
                 ring.remove();
                 this.rings.splice(i, 1);
                 if (this.onRingCollected) {
@@ -401,55 +396,64 @@ export class Level {
         }
     }
 
+    update(deltaTime, playerPosition) {
+        // Update environment
+        this.environment.update(deltaTime);
+        
+        // Update raptors
+        this.raptors.forEach(raptor => {
+            raptor.update(deltaTime);
+            raptor.checkPlayerCollision(playerPosition);
+        });
+        
+        // Update rings without collision checks (now handled in checkRingCollisions)
+        this.rings.forEach(ring => {
+            ring.update(deltaTime);
+        });
+        
+        // Check lava collision
+        this.environment.checkLavaCollision(playerPosition);
+    }
+
     reset() {
-        // Remove all rings
-        for (const ring of this.rings) {
-            ring.remove();
-        }
+        // Clear existing elements
+        this.rings.forEach(ring => ring.remove());
         this.rings = [];
-
-        // Remove all enemies
-        for (const enemy of this.enemies) {
-            if (enemy.mesh && enemy.mesh.parent) {
-                enemy.mesh.parent.remove(enemy.mesh);
-            }
-        }
-        this.enemies = [];
-
-        // Remove all platforms
-        for (const platform of this.platforms) {
-            if (platform.parent) {
-                platform.parent.remove(platform);
-            }
-        }
+        
+        this.raptors.forEach(raptor => raptor.dispose());
+        this.raptors = [];
+        
+        this.platforms.forEach(platform => this.scene.remove(platform));
         this.platforms = [];
-
-        // Remove all obstacles
-        for (const obstacle of this.obstacles) {
-            if (obstacle.parent) {
-                obstacle.parent.remove(obstacle);
-            }
-        }
+        
+        this.obstacles.forEach(obstacle => this.scene.remove(obstacle));
         this.obstacles = [];
-
-        // Remove all buildings
-        for (const building of this.buildings) {
-            if (building.parent) {
-                building.parent.remove(building);
-            }
-        }
+        
+        this.buildings.forEach(building => {
+            building.traverse(child => {
+                if (child.geometry) child.geometry.dispose();
+                if (child.material) child.material.dispose();
+            });
+            this.scene.remove(building);
+        });
         this.buildings = [];
-
-        // Remove all trees
-        for (const tree of this.trees) {
-            if (tree.parent) {
-                tree.parent.remove(tree);
-            }
-        }
+        
+        this.trees.forEach(tree => {
+            tree.traverse(child => {
+                if (child.geometry) child.geometry.dispose();
+                if (child.material) child.material.dispose();
+            });
+            this.scene.remove(tree);
+        });
         this.trees = [];
-
-        // Reset systems
+        
+        // Reset environment
+        if (this.environment) {
+            this.environment.dispose();
+        }
+        this.environment = new Environment(this.scene, this.physics);
+        
+        // Reset collision system
         this.collisionSystem.reset();
-        this.materialManager.dispose();
     }
 } 
