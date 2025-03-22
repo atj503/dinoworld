@@ -1,7 +1,8 @@
-import * as THREE from '../node_modules/three/build/three.module.js';
+import * as THREE from 'three';
 import { Player } from './player.js';
 import { Level } from './level.js';
 import { UI } from './ui.js';
+import { Game } from './Game.js';
 
 // Scene setup
 const scene = new THREE.Scene();
@@ -232,9 +233,6 @@ window.addEventListener('error', (event) => {
     event.preventDefault();
 });
 
-// Start the game
-init().then(() => {
-    animate();
-}).catch(() => {
-    ui.showError();
-});
+// Create and start the game
+const game = new Game();
+game.start();

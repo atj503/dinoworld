@@ -1,11 +1,18 @@
 {
     "name": "Level 1",
     "environment": {
-        "groundColor": "0x808080",
+        "groundColor": "0x4a8505",
         "skyColor": "0x87CEEB",
         "groundSize": {
-            "width": 100,
-            "depth": 100
+            "width": 200,
+            "depth": 200
+        },
+        "boundary": {
+            "type": "forest",
+            "radius": 95,
+            "treeCount": 50,
+            "treeTypes": ["pine", "oak"],
+            "spacing": 5
         }
     },
     "playerStart": {
@@ -16,52 +23,72 @@
     "terrain": {
         "platforms": [
             {
-                "type": "platform",
-                "position": { "x": 3, "y": 1, "z": -3 },
-                "size": { "width": 4, "height": 0.5, "depth": 4 },
-                "color": "0x8B4513",
-                "rotation": { "x": 0, "y": 0, "z": 0 }
+                "type": "flat",
+                "position": { "x": 15, "y": 2, "z": 15 },
+                "rotation": { "x": 0, "y": 0, "z": 0 },
+                "size": { "width": 10, "height": 0.5, "depth": 10 },
+                "color": "0x808080"
             },
             {
                 "type": "ramp",
-                "position": { "x": -4, "y": 0.5, "z": 4 },
-                "size": { "width": 4, "height": 1, "depth": 4 },
-                "color": "0x8B4513",
-                "rotation": { "x": -15, "y": 0, "z": 0 }
+                "position": { "x": 5, "y": 1, "z": 15 },
+                "rotation": { "x": 15, "y": 0, "z": 0 },
+                "size": { "width": 10, "height": 0.5, "depth": 10 },
+                "color": "0x808080"
             }
         ],
         "obstacles": [
             {
-                "type": "box",
-                "position": { "x": 7, "y": 1, "z": 7 },
-                "size": { "width": 2, "height": 4, "depth": 2 },
-                "color": "0x4A4A4A",
-                "rotation": { "x": 0, "y": 45, "z": 0 }
+                "type": "building",
+                "position": { "x": -20, "y": 7.5, "z": -20 },
+                "rotation": { "x": 0, "y": 45, "z": 0 },
+                "size": { "width": 15, "height": 15, "depth": 15 },
+                "color": "0x4a4a4a"
+            },
+            {
+                "type": "building",
+                "position": { "x": 20, "y": 10, "z": -20 },
+                "rotation": { "x": 0, "y": -30, "z": 0 },
+                "size": { "width": 10, "height": 20, "depth": 10 },
+                "color": "0x6a6a6a"
             },
             {
                 "type": "cylinder",
-                "position": { "x": -7, "y": 1.5, "z": -7 },
-                "size": { "radius": 1, "height": 3 },
-                "color": "0x4A4A4A",
-                "rotation": { "x": 0, "y": 0, "z": 0 }
+                "position": { "x": 0, "y": 5, "z": -30 },
+                "rotation": { "x": 0, "y": 0, "z": 0 },
+                "size": { "radius": 3, "height": 10 },
+                "color": "0x8a8a8a"
             }
         ]
     },
     "rings": [
         {
-            "position": { "x": 5, "y": 2, "z": -5 },
-            "rotation": { "x": 0, "y": 45, "z": 0 },
-            "collected": false
+            "position": { "x": 15, "y": 5, "z": 15 },
+            "rotation": { "x": 0, "y": 45, "z": 0 }
         },
         {
-            "position": { "x": -5, "y": 2.5, "z": -8 },
-            "rotation": { "x": 0, "y": 30, "z": 0 },
-            "collected": false
+            "position": { "x": -20, "y": 15, "z": -20 },
+            "rotation": { "x": 90, "y": 0, "z": 0 }
         },
         {
-            "position": { "x": 8, "y": 2.8, "z": 5 },
-            "rotation": { "x": 0, "y": 60, "z": 0 },
-            "collected": false
+            "position": { "x": 20, "y": 12, "z": -20 },
+            "rotation": { "x": 0, "y": 60, "z": 0 }
+        },
+        {
+            "position": { "x": 0, "y": 8, "z": -30 },
+            "rotation": { "x": 45, "y": 0, "z": 0 }
+        },
+        {
+            "position": { "x": -15, "y": 6, "z": 15 },
+            "rotation": { "x": 0, "y": -30, "z": 0 }
+        },
+        {
+            "position": { "x": 30, "y": 4, "z": 0 },
+            "rotation": { "x": 0, "y": 90, "z": 0 }
+        },
+        {
+            "position": { "x": -30, "y": 7, "z": 0 },
+            "rotation": { "x": 60, "y": 0, "z": 0 }
         }
     ],
     "enemies": [
@@ -70,15 +97,34 @@
             "position": { "x": 10, "y": 1, "z": 0 },
             "patrolPoints": [
                 { "x": 10, "y": 1, "z": 0 },
-                { "x": 10, "y": 1, "z": 10 }
+                { "x": 10, "y": 1, "z": 20 },
+                { "x": 30, "y": 1, "z": 20 },
+                { "x": 30, "y": 1, "z": 0 }
             ],
             "speed": 0.05
         },
         {
-            "type": "chase",
+            "type": "patrol",
             "position": { "x": -10, "y": 1, "z": -10 },
-            "detectionRange": 15,
-            "speed": 0.04
+            "patrolPoints": [
+                { "x": -10, "y": 1, "z": -10 },
+                { "x": -30, "y": 1, "z": -10 },
+                { "x": -30, "y": 1, "z": -30 },
+                { "x": -10, "y": 1, "z": -30 }
+            ],
+            "speed": 0.06
+        },
+        {
+            "type": "chase",
+            "position": { "x": -20, "y": 1, "z": 20 },
+            "detectionRange": 20,
+            "speed": 0.07
+        },
+        {
+            "type": "chase",
+            "position": { "x": 20, "y": 1, "z": -20 },
+            "detectionRange": 25,
+            "speed": 0.065
         }
     ]
 } 
