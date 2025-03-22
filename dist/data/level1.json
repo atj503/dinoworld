@@ -1,0 +1,84 @@
+{
+    "name": "Level 1",
+    "environment": {
+        "groundColor": "0x808080",
+        "skyColor": "0x87CEEB",
+        "groundSize": {
+            "width": 100,
+            "depth": 100
+        }
+    },
+    "playerStart": {
+        "x": 0,
+        "y": 1,
+        "z": 0
+    },
+    "terrain": {
+        "platforms": [
+            {
+                "type": "platform",
+                "position": { "x": 3, "y": 1, "z": -3 },
+                "size": { "width": 4, "height": 0.5, "depth": 4 },
+                "color": "0x8B4513",
+                "rotation": { "x": 0, "y": 0, "z": 0 }
+            },
+            {
+                "type": "ramp",
+                "position": { "x": -4, "y": 0.5, "z": 4 },
+                "size": { "width": 4, "height": 1, "depth": 4 },
+                "color": "0x8B4513",
+                "rotation": { "x": -15, "y": 0, "z": 0 }
+            }
+        ],
+        "obstacles": [
+            {
+                "type": "box",
+                "position": { "x": 7, "y": 1, "z": 7 },
+                "size": { "width": 2, "height": 4, "depth": 2 },
+                "color": "0x4A4A4A",
+                "rotation": { "x": 0, "y": 45, "z": 0 }
+            },
+            {
+                "type": "cylinder",
+                "position": { "x": -7, "y": 1.5, "z": -7 },
+                "size": { "radius": 1, "height": 3 },
+                "color": "0x4A4A4A",
+                "rotation": { "x": 0, "y": 0, "z": 0 }
+            }
+        ]
+    },
+    "rings": [
+        {
+            "position": { "x": 5, "y": 2, "z": -5 },
+            "rotation": { "x": 0, "y": 45, "z": 0 },
+            "collected": false
+        },
+        {
+            "position": { "x": -5, "y": 2.5, "z": -8 },
+            "rotation": { "x": 0, "y": 30, "z": 0 },
+            "collected": false
+        },
+        {
+            "position": { "x": 8, "y": 2.8, "z": 5 },
+            "rotation": { "x": 0, "y": 60, "z": 0 },
+            "collected": false
+        }
+    ],
+    "enemies": [
+        {
+            "type": "patrol",
+            "position": { "x": 10, "y": 1, "z": 0 },
+            "patrolPoints": [
+                { "x": 10, "y": 1, "z": 0 },
+                { "x": 10, "y": 1, "z": 10 }
+            ],
+            "speed": 0.05
+        },
+        {
+            "type": "chase",
+            "position": { "x": -10, "y": 1, "z": -10 },
+            "detectionRange": 15,
+            "speed": 0.04
+        }
+    ]
+} 

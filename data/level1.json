@@ -1,0 +1,50 @@
+{
+    "name": "Level 1",
+    "environment": {
+        "groundColor": "0x808080",
+        "skyColor": "0x87CEEB",
+        "groundSize": {
+            "width": 100,
+            "depth": 100
+        }
+    },
+    "playerStart": {
+        "x": 0,
+        "y": 1,
+        "z": 0
+    },
+    "rings": [
+        {
+            "position": { "x": 5, "y": 2, "z": -5 },
+            "rotation": { "x": 0, "y": 45, "z": 0 },
+            "collected": false
+        },
+        {
+            "position": { "x": -5, "y": 2.5, "z": -8 },
+            "rotation": { "x": 0, "y": 30, "z": 0 },
+            "collected": false
+        },
+        {
+            "position": { "x": 8, "y": 2.8, "z": 5 },
+            "rotation": { "x": 0, "y": 60, "z": 0 },
+            "collected": false
+        }
+    ],
+    "enemies": [
+        {
+            "type": "patrol",
+            "position": { "x": 10, "y": 1, "z": 0 },
+            "patrolPoints": [
+                { "x": 10, "y": 1, "z": 0 },
+                { "x": 10, "y": 1, "z": 10 }
+            ],
+            "speed": 0.05
+        },
+        {
+            "type": "chase",
+            "position": { "x": -10, "y": 1, "z": -10 },
+            "detectionRange": 15,
+            "speed": 0.04
+        }
+    ]
+} 
