@@ -8,7 +8,7 @@ class Ring {
         this.mesh = mesh;
         this.position = position;
         this.rotation = rotation;
-        this.boundingSphere = new THREE.Sphere(position, 1.5); // Use ring radius
+        this.boundingSphere = new THREE.Sphere(position, 2); // Increased collision radius
     }
 
     intersectsBounds(playerBounds) {
@@ -18,11 +18,27 @@ class Ring {
         // Check if player's bounding box intersects ring's bounding sphere
         return playerBounds.intersectsSphere(this.boundingSphere);
     }
+
+    update(deltaTime) {
+        // Rotate the ring
+        this.mesh.rotation.y += deltaTime * 2;
+        
+        // Add a gentle floating motion
+        this.mesh.position.y = this.position.y + Math.sin(Date.now() * 0.002) * 0.2;
+    }
+
+    remove() {
+        // Remove the ring from the scene
+        if (this.mesh && this.mesh.parent) {
+            this.mesh.parent.remove(this.mesh);
+        }
+    }
 }
 
 export class Level {
-    constructor(scene, onRingCollected) {
+    constructor(scene, physics, onRingCollected) {
         this.scene = scene;
+        this.physics = physics;
         this.onRingCollected = onRingCollected;
         this.collisionSystem = new CollisionSystem();
         this.materialManager = new MaterialManager();
@@ -250,7 +266,7 @@ export class Level {
             metalness: 0.8,
             roughness: 0.2,
             emissive: 0xffd700,
-            emissiveIntensity: 0.5
+            emissiveIntensity: 0.8
         });
         
         for (const data of ringsData) {
@@ -354,45 +370,84 @@ export class Level {
     }
 
     update(deltaTime, playerPosition) {
-        // Update physics and collisions
-        this.collisionSystem.update(deltaTime);
-        
+        // Update rings and check for collisions
+        for (let i = this.rings.length - 1; i >= 0; i--) {
+            const ring = this.rings[i];
+            ring.update(deltaTime);
+        }
+
         // Update enemies
         for (const enemy of this.enemies) {
             enemy.update(deltaTime, playerPosition);
+            if (enemy.checkCollision(playerPosition)) {
+                return true; // Game over
+            }
         }
-        
-        // Animate rings
-        for (const ring of this.rings) {
-            ring.mesh.rotation.y += deltaTime;
+
+        return false;
+    }
+
+    checkRingCollisions(playerBounds) {
+        for (let i = this.rings.length - 1; i >= 0; i--) {
+            const ring = this.rings[i];
+            if (ring.intersectsBounds(playerBounds)) {
+                // Remove the ring and call the collection callback
+                ring.remove();
+                this.rings.splice(i, 1);
+                if (this.onRingCollected) {
+                    this.onRingCollected();
+                }
+            }
         }
     }
 
     reset() {
-        // Remove all objects from scene
-        while(this.scene.children.length > 0) { 
-            const object = this.scene.children[0];
-            if (object.geometry) {
-                object.geometry.dispose();
-            }
-            if (object.material) {
-                if (Array.isArray(object.material)) {
-                    object.material.forEach(material => material.dispose());
-                } else {
-                    object.material.dispose();
-                }
-            }
-            this.scene.remove(object);
+        // Remove all rings
+        for (const ring of this.rings) {
+            ring.remove();
         }
-
-        // Reset collections
         this.rings = [];
+
+        // Remove all enemies
+        for (const enemy of this.enemies) {
+            if (enemy.mesh && enemy.mesh.parent) {
+                enemy.mesh.parent.remove(enemy.mesh);
+            }
+        }
         this.enemies = [];
+
+        // Remove all platforms
+        for (const platform of this.platforms) {
+            if (platform.parent) {
+                platform.parent.remove(platform);
+            }
+        }
         this.platforms = [];
+
+        // Remove all obstacles
+        for (const obstacle of this.obstacles) {
+            if (obstacle.parent) {
+                obstacle.parent.remove(obstacle);
+            }
+        }
         this.obstacles = [];
+
+        // Remove all buildings
+        for (const building of this.buildings) {
+            if (building.parent) {
+                building.parent.remove(building);
+            }
+        }
         this.buildings = [];
+
+        // Remove all trees
+        for (const tree of this.trees) {
+            if (tree.parent) {
+                tree.parent.remove(tree);
+            }
+        }
         this.trees = [];
-        
+
         // Reset systems
         this.collisionSystem.reset();
         this.materialManager.dispose();

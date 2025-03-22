@@ -37,7 +37,8 @@ export class Game {
             ArrowLeft: false,
             ArrowDown: false,
             ArrowRight: false,
-            ' ': false // Space bar for jumping
+            ' ': false,
+            'Shift': false
         };
         
         // Setup systems
@@ -72,35 +73,43 @@ export class Game {
         this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
         this.renderer.outputColorSpace = THREE.SRGBColorSpace;
         this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
-        this.renderer.toneMappingExposure = 1.0;
+        this.renderer.toneMappingExposure = 1.2;
+        this.renderer.setClearColor(0x87CEEB); // Sky blue
     }
 
     setupLighting() {
-        // Strong ambient light to ensure everything is visible
-        const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+        // Ambient light for overall scene brightness
+        const ambientLight = new THREE.AmbientLight(0xffffff, 0.7);
         this.scene.add(ambientLight);
 
         // Main directional light (sun)
-        const directionalLight = new THREE.DirectionalLight(0xffffff, 1.0);
-        directionalLight.position.set(50, 100, 50);
+        const directionalLight = new THREE.DirectionalLight(0xffffff, 1.2);
+        directionalLight.position.set(-50, 100, 50);
         directionalLight.castShadow = true;
         
         // Improved shadow settings
-        directionalLight.shadow.mapSize.width = 2048;
-        directionalLight.shadow.mapSize.height = 2048;
+        directionalLight.shadow.mapSize.width = 4096;
+        directionalLight.shadow.mapSize.height = 4096;
         directionalLight.shadow.camera.near = 0.1;
         directionalLight.shadow.camera.far = 500;
         directionalLight.shadow.camera.left = -100;
         directionalLight.shadow.camera.right = 100;
         directionalLight.shadow.camera.top = 100;
         directionalLight.shadow.camera.bottom = -100;
-        directionalLight.shadow.bias = -0.001;
+        directionalLight.shadow.bias = -0.0005;
+        directionalLight.shadow.normalBias = 0.02;
         
         this.scene.add(directionalLight);
 
         // Add hemisphere light for better ambient lighting
-        const hemiLight = new THREE.HemisphereLight(0xffffff, 0x444444, 0.6);
+        const hemiLight = new THREE.HemisphereLight(0xffffff, 0x444444, 0.8);
+        hemiLight.position.set(0, 100, 0);
         this.scene.add(hemiLight);
+
+        // Add a secondary fill light
+        const fillLight = new THREE.DirectionalLight(0xffffff, 0.5);
+        fillLight.position.set(50, 50, -50);
+        this.scene.add(fillLight);
     }
 
     setupEventListeners() {
@@ -134,6 +143,9 @@ export class Game {
                         this.reset();
                     }
                     break;
+                case 'shift':
+                    this.keys['Shift'] = true;
+                    break;
             }
         });
 
@@ -162,6 +174,9 @@ export class Game {
                     break;
                 case ' ':
                     this.keys[' '] = false;
+                    break;
+                case 'shift':
+                    this.keys['Shift'] = false;
                     break;
             }
         });

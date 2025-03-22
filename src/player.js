@@ -9,20 +9,23 @@ export class Player {
         this.mixer = null;
         this.animations = {};
         this.currentAction = null;
-        this.speed = 0.15;
+        this.normalSpeed = 0.15;
+        this.sprintSpeed = 0.3;
+        this.speed = this.normalSpeed;
         this.turnSpeed = 0.05;
-        this.jumpForce = 8;
+        this.jumpForce = 4;
         this.velocity = new THREE.Vector3();
         this.direction = new THREE.Vector3();
         this.lastRotationY = 0;
         this.isGrounded = true;
         this.isJumping = false;
+        this.isSprinting = false;
         this.jumpCooldown = 0;
-        this.jumpCooldownTime = 0.1; // 100ms cooldown between jumps
+        this.jumpCooldownTime = 0.1;
         
         // Camera settings
-        this.cameraOffset = new THREE.Vector3(1.5, 2, 0); // Offset to the right
-        this.cameraLookOffset = new THREE.Vector3(0, 0.5, -5); // Look ahead and slightly up
+        this.cameraOffset = new THREE.Vector3(1.5, 2, 0);
+        this.cameraLookOffset = new THREE.Vector3(0, 0.5, -5);
         this.cameraBobAmount = 0.05;
         this.cameraBobSpeed = 5;
         this.cameraBobTime = 0;
@@ -167,6 +170,10 @@ export class Player {
                 this.mesh.rotation.y -= this.turnSpeed;
             }
 
+            // Handle sprinting
+            this.isSprinting = keysPressed['Shift'];
+            this.speed = this.isSprinting ? this.sprintSpeed : this.normalSpeed;
+
             // Handle movement
             if (keysPressed['w'] || keysPressed['ArrowUp']) {
                 this.velocity.z = -this.speed;
@@ -186,6 +193,7 @@ export class Player {
                 this.isGrounded = false;
                 this.isJumping = true;
                 this.jumpCooldown = this.jumpCooldownTime;
+                this.playAnimation('jump');
             }
 
             // Apply gravity
@@ -222,7 +230,7 @@ export class Player {
             if (this.isJumping) {
                 this.playAnimation('jump');
             } else if (this.velocity.length() > 0) {
-                this.playAnimation('walk');
+                this.playAnimation(this.isSprinting ? 'run' : 'walk');
             } else {
                 this.playAnimation('idle');
             }
