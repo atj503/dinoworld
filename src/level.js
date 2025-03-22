@@ -19,53 +19,37 @@ export class Level {
 
     async loadLevel(levelNumber) {
         try {
-            console.log(`Attempting to load level${levelNumber}.json from /data directory...`);
+            // Clear any existing level elements
+            this.reset();
+            
+            // Load level data
             const response = await fetch(`/data/level${levelNumber}.json`);
-            
             if (!response.ok) {
-                const errorText = await response.text();
-                console.error(`Failed to load level${levelNumber}.json:`, {
-                    status: response.status,
-                    statusText: response.statusText,
-                    responseText: errorText
-                });
-                throw new Error(`Failed to load level${levelNumber}.json (Status: ${response.status})`);
-            }
-
-            console.log('Level data fetch successful, parsing JSON...');
-            this.levelData = await response.json();
-            console.log('Level data parsed successfully:', this.levelData.name);
-            
-            // Clear existing level
-            this.clearLevel();
-            
-            // Create ground
-            await this.createGround();
-            
-            // Create boundary
-            if (this.levelData.environment.boundary) {
-                this.createBoundary();
+                throw new Error(`Failed to load level ${levelNumber}`);
             }
             
-            // Create terrain features
-            if (this.levelData.terrain) {
-                await this.createTerrain();
+            const levelData = await response.json();
+            
+            // Validate player start position
+            if (!levelData.playerStart || 
+                typeof levelData.playerStart.x !== 'number' || 
+                typeof levelData.playerStart.y !== 'number' || 
+                typeof levelData.playerStart.z !== 'number') {
+                console.error('Invalid player start position in level data:', levelData.playerStart);
+                // Provide default start position
+                return { x: 0, y: 0, z: 0 };
             }
             
-            // Create rings
-            this.createRings();
+            // Create level elements
+            await this.createTerrain(levelData.terrain);
+            this.createRings(levelData.rings);
+            this.createEnemies(levelData.enemies);
             
-            // Create enemies
-            this.createEnemies();
-
-            console.log('Level loaded successfully!');
-            
+            return levelData.playerStart;
         } catch (error) {
             console.error('Error loading level:', error);
-            if (error instanceof SyntaxError) {
-                console.error('JSON parsing error - invalid level data format');
-            }
-            throw error;
+            // Return safe default coordinates if loading fails
+            return { x: 0, y: 0, z: 0 };
         }
     }
 
@@ -160,8 +144,8 @@ export class Level {
         this.physics.addBody(foliage, 'static');
     }
 
-    async createTerrain() {
-        const { platforms, obstacles } = this.levelData.terrain;
+    async createTerrain(terrainData) {
+        const { platforms, obstacles } = terrainData;
         
         // Create platforms
         for (const platformData of platforms) {
@@ -214,7 +198,6 @@ export class Level {
     async createObstacle(data) {
         const { type, position, rotation, size, color } = data;
         
-        let geometry;
         if (type === 'building') {
             // Create building with windows
             const building = new THREE.Group();
@@ -239,6 +222,35 @@ export class Level {
             const windowSpacing = 2;
             const floorsCount = Math.floor(size.height / 3);
             const windowsPerSide = Math.floor(size.width / 2.5);
+            
+            // Create collision walls for each side of the building
+            const wallThickness = 0.5;
+            const walls = [
+                // Front wall
+                new THREE.BoxGeometry(size.width, size.height, wallThickness),
+                // Back wall
+                new THREE.BoxGeometry(size.width, size.height, wallThickness),
+                // Left wall
+                new THREE.BoxGeometry(wallThickness, size.height, size.depth),
+                // Right wall
+                new THREE.BoxGeometry(wallThickness, size.height, size.depth)
+            ];
+            
+            const wallPositions = [
+                [0, 0, size.depth/2],  // Front
+                [0, 0, -size.depth/2], // Back
+                [-size.width/2, 0, 0],  // Left
+                [size.width/2, 0, 0]   // Right
+            ];
+            
+            walls.forEach((wallGeometry, index) => {
+                const wallMesh = new THREE.Mesh(
+                    wallGeometry,
+                    new THREE.MeshStandardMaterial({ visible: false })
+                );
+                wallMesh.position.set(...wallPositions[index]);
+                building.add(wallMesh);
+            });
             
             for (let floor = 0; floor < floorsCount; floor++) {
                 for (let w = 0; w < windowsPerSide; w++) {
@@ -290,10 +302,21 @@ export class Level {
             );
             
             this.scene.add(building);
+            
+            // Add collision bodies for each wall
+            building.children.forEach((child, index) => {
+                if (child.geometry && child.geometry.type.includes('BoxGeometry')) {
+                    // Only add physics to the wall meshes
+                    if (index < 4) {  // First 4 children are the walls
+                        this.physics.addBody(child, 'static');
+                    }
+                }
+            });
+            
             return building;
             
         } else if (type === 'cylinder') {
-            geometry = new THREE.CylinderGeometry(size.radius, size.radius, size.height, 32);
+            const geometry = new THREE.CylinderGeometry(size.radius, size.radius, size.height, 32);
             const material = new THREE.MeshStandardMaterial({
                 color: parseInt(color),
                 roughness: 0.7,
@@ -312,11 +335,15 @@ export class Level {
             cylinder.receiveShadow = true;
             
             this.scene.add(cylinder);
+            
+            // Add cylinder collision
+            this.physics.addBody(cylinder, 'static');
+            
             return cylinder;
         }
     }
 
-    createRings() {
+    createRings(ringData) {
         const ringGeometry = new THREE.TorusGeometry(1.5, 0.2, 16, 32);
         const ringMaterial = new THREE.MeshStandardMaterial({
             color: 0xffd700,
@@ -326,7 +353,7 @@ export class Level {
             emissiveIntensity: 0.4
         });
         
-        for (const ringData of this.levelData.rings) {
+        for (const ringData of ringData) {
             const ring = new THREE.Mesh(ringGeometry, ringMaterial);
             ring.position.set(ringData.position.x, ringData.position.y, ringData.position.z);
             ring.rotation.set(
@@ -348,8 +375,8 @@ export class Level {
         }
     }
 
-    createEnemies() {
-        for (const enemyData of this.levelData.enemies) {
+    createEnemies(enemyData) {
+        for (const enemyData of enemyData) {
             const enemy = new Enemy(this.scene, enemyData);
             this.enemies.push(enemy);
             
@@ -416,5 +443,18 @@ export class Level {
         this.obstacles = [];
         this.trees = [];
         this.ground = null;
+    }
+
+    reset() {
+        this.clearLevel();
+        this.levelData = null;
+        this.ground = null;
+        this.rings = [];
+        this.enemies = [];
+        this.platforms = [];
+        this.obstacles = [];
+        this.trees = [];
+        this.physics.reset();
+        this.textureLoader = new THREE.TextureLoader();
     }
 } 

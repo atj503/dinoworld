@@ -1,9 +1,10 @@
-import * as THREE from '../node_modules/three/build/three.module.js';
-import { FBXLoader } from '../node_modules/three/examples/jsm/loaders/FBXLoader.js';
+import * as THREE from 'three';
+import { FBXLoader } from 'three/examples/jsm/loaders/FBXLoader.js';
 
 export class Player {
-    constructor(scene) {
+    constructor(scene, camera) {
         this.scene = scene;
+        this.camera = camera;
         this.mesh = null;
         this.mixer = null;
         this.animations = {};
@@ -12,30 +13,71 @@ export class Player {
         this.turnSpeed = 0.05;
         this.velocity = new THREE.Vector3();
         this.direction = new THREE.Vector3();
-        this.lastRotationY = 0; // Track last rotation
+        this.lastRotationY = 0;
+        this.cameraOffset = new THREE.Vector3(0, 2, 0);
+        this.boundingBox = new THREE.Box3();
+        this.tempBox = new THREE.Box3();
+        this.collisionPadding = 0.2;
+        this.isLoaded = false;
         
-        // Load the Stegosaurus model
-        this.loadModel();
+        // Create a temporary cube as placeholder
+        this.createTemporaryModel();
+        
+        // Load the actual model
+        this.loadModel().catch(error => {
+            console.error('Failed to load dinosaur model, using fallback:', error);
+        });
+    }
+
+    createTemporaryModel() {
+        // Create a simple cube as placeholder
+        const geometry = new THREE.BoxGeometry(1, 2, 2);
+        const material = new THREE.MeshPhongMaterial({ color: 0x7da87d });
+        const cube = new THREE.Mesh(geometry, material);
+        cube.castShadow = true;
+        cube.receiveShadow = true;
+        
+        const container = new THREE.Object3D();
+        container.add(cube);
+        this.mesh = container;
+        this.scene.add(this.mesh);
+        
+        // Set up basic collision box for temporary model
+        this.boundingBox.setFromObject(cube);
+        this.collisionSize = new THREE.Vector3(1, 2, 2);
+        
+        // Initial camera setup
+        this.updateCameraPosition();
     }
 
     async loadModel() {
-        const loader = new FBXLoader();
         try {
+            const loader = new FBXLoader();
             const model = await loader.loadAsync('/memory-bank/Stegasaurus_20K.fbx');
             
-            // Scale and position the model appropriately
-            model.scale.setScalar(0.01); // Adjust scale as needed
-            model.position.y = 0; // Set initial height
+            if (!this.mesh) {
+                console.error('Mesh is null during model load');
+                return;
+            }
             
-            // Add materials to make the model more visible
+            // Store current position and rotation
+            const currentPosition = this.mesh.position.clone();
+            const currentRotation = this.mesh.rotation.clone();
+            
+            // Remove temporary model
+            this.scene.remove(this.mesh);
+            
+            // Scale and position the new model
+            model.scale.setScalar(0.01);
+            
+            // Setup materials
             const material = new THREE.MeshPhongMaterial({
-                color: 0x7da87d,  // Greenish color
+                color: 0x7da87d,
                 specular: 0x333333,
                 shininess: 30,
                 flatShading: false
             });
 
-            // Apply material to all mesh parts
             model.traverse((child) => {
                 if (child.isMesh) {
                     child.material = material;
@@ -44,120 +86,198 @@ export class Player {
                 }
             });
             
-            // Create a container and add the model to it
+            // Create new container
             const container = new THREE.Object3D();
-            
-            // First rotate the model itself
             model.rotation.y = Math.PI;
             container.add(model);
-
-            // Then rotate the container the opposite way
             container.rotation.y = Math.PI;
-
+            
+            // Restore position and rotation
+            container.position.copy(currentPosition);
+            container.rotation.copy(currentRotation);
+            
             this.mesh = container;
-            
-            // Add another axes helper to see model's local axes
-            const modelAxesHelper = new THREE.AxesHelper(3);
-            this.mesh.add(modelAxesHelper);
-            
             this.scene.add(this.mesh);
             
-            // Setup animations if they exist
+            // Setup animations
             if (model.animations.length > 0) {
                 this.mixer = new THREE.AnimationMixer(model);
                 model.animations.forEach(clip => {
                     this.animations[clip.name] = this.mixer.clipAction(clip);
                 });
-                // Play default animation if available
                 if (this.animations['idle']) {
                     this.playAnimation('idle');
                 }
             }
             
-            // Create a collision box
-            const bbox = new THREE.Box3().setFromObject(model);
-            const size = bbox.getSize(new THREE.Vector3());
-            this.collider = new THREE.Box3();
-            this.colliderSize = size;
+            // Update collision box
+            this.boundingBox.setFromObject(model);
+            const size = this.boundingBox.getSize(new THREE.Vector3());
+            this.collisionSize = new THREE.Vector3(
+                size.x * 0.8,
+                size.y,
+                size.z * 0.8
+            );
+            
+            this.isLoaded = true;
             
         } catch (error) {
             console.error('Error loading Stegosaurus model:', error);
+            // Keep using the temporary model if loading fails
+            this.isLoaded = true;
         }
     }
 
     playAnimation(name) {
-        if (this.currentAction) {
-            this.currentAction.fadeOut(0.2);
-        }
-        if (this.animations[name]) {
+        if (!this.mixer || !this.animations[name]) return;
+        
+        try {
+            if (this.currentAction) {
+                this.currentAction.fadeOut(0.2);
+            }
             this.animations[name].reset().fadeIn(0.2).play();
             this.currentAction = this.animations[name];
+        } catch (error) {
+            console.error('Error playing animation:', error);
         }
     }
 
-    update(delta, keysPressed) {
-        if (!this.mesh) return;
+    update(delta, keysPressed, obstacles) {
+        if (!this.mesh || !this.isLoaded) return;
 
-        // Update animation mixer
-        if (this.mixer) {
-            this.mixer.update(delta);
+        try {
+            // Update animation mixer
+            if (this.mixer) {
+                this.mixer.update(delta);
+            }
+
+            // Store current position for collision detection
+            const previousPosition = this.mesh.position.clone();
+            
+            // Reset velocity
+            this.velocity.x = 0;
+            this.velocity.z = 0;
+
+            // Store last rotation
+            this.lastRotationY = this.mesh.rotation.y;
+
+            // Handle rotation first
+            if (keysPressed['a'] || keysPressed['ArrowLeft']) {
+                this.mesh.rotation.y += this.turnSpeed;
+            }
+            if (keysPressed['d'] || keysPressed['ArrowRight']) {
+                this.mesh.rotation.y -= this.turnSpeed;
+            }
+
+            // Calculate movement based on key presses
+            if (keysPressed['w'] || keysPressed['ArrowUp']) {
+                this.velocity.z = -this.speed;
+            }
+            if (keysPressed['s'] || keysPressed['ArrowDown']) {
+                this.velocity.z = this.speed;
+            }
+
+            // Apply movement in the direction the model is facing
+            if (this.velocity.length() > 0) {
+                this.direction.set(0, 0, 1).applyQuaternion(this.mesh.quaternion);
+                const movement = this.direction.multiplyScalar(this.velocity.z);
+                
+                // Try to move
+                this.mesh.position.add(movement);
+                
+                // Check for collisions
+                if (this.checkCollisions(obstacles)) {
+                    // If collision occurred, revert to previous position
+                    this.mesh.position.copy(previousPosition);
+                }
+            }
+
+            // Update camera position
+            this.updateCameraPosition();
+
+            // Play appropriate animation
+            if (this.velocity.length() > 0) {
+                this.playAnimation('walk');
+            } else {
+                this.playAnimation('idle');
+            }
+            
+        } catch (error) {
+            console.error('Error in player update:', error);
         }
+    }
 
-        // Reset velocity
-        this.velocity.x = 0;
-        this.velocity.z = 0;
-
-        // Store last rotation
-        this.lastRotationY = this.mesh.rotation.y;
-
-        // Calculate movement based on key presses
-        if (keysPressed['w'] || keysPressed['ArrowUp']) {
-            this.velocity.z = -this.speed;  // Negative Z is away from camera
-        }
-        if (keysPressed['s'] || keysPressed['ArrowDown']) {
-            this.velocity.z = this.speed;  // Positive Z is toward camera
-        }
-        if (keysPressed['a'] || keysPressed['ArrowLeft']) {
-            this.mesh.rotation.y += this.turnSpeed;
-        }
-        if (keysPressed['d'] || keysPressed['ArrowRight']) {
-            this.mesh.rotation.y -= this.turnSpeed;
-        }
-
-        // Apply movement in the direction the model is facing
-        this.direction.set(0, 0, 1).applyQuaternion(this.mesh.quaternion);
-        this.mesh.position.addScaledVector(this.direction, this.velocity.z);
-
-        // Update collider position
-        if (this.collider) {
-            this.collider.setFromCenterAndSize(
+    checkCollisions(obstacles) {
+        if (!obstacles || !this.mesh || !this.isLoaded) return false;
+        
+        try {
+            // Update player's bounding box
+            this.boundingBox.setFromCenterAndSize(
                 this.mesh.position,
-                this.colliderSize
+                this.collisionSize
             );
+            
+            // Add padding to bounding box for smoother collision response
+            this.boundingBox.min.subScalar(this.collisionPadding);
+            this.boundingBox.max.addScalar(this.collisionPadding);
+            
+            // Check collision with each obstacle
+            for (const obstacle of obstacles) {
+                if (!obstacle.geometry) continue;
+                
+                // Get obstacle's world transform
+                this.tempBox.setFromObject(obstacle);
+                
+                if (this.boundingBox.intersectsBox(this.tempBox)) {
+                    return true;
+                }
+            }
+        } catch (error) {
+            console.error('Error checking collisions:', error);
+            return false;
         }
+        
+        return false;
+    }
 
-        // Play appropriate animation
-        if (this.velocity.length() > 0) {
-            this.playAnimation('walk');
-        } else {
-            this.playAnimation('idle');
+    updateCameraPosition() {
+        if (!this.mesh || !this.camera || !this.isLoaded) return;
+        
+        try {
+            // Position camera at player's head height
+            const cameraPosition = this.mesh.position.clone().add(this.cameraOffset);
+            this.camera.position.copy(cameraPosition);
+            
+            // Calculate look direction
+            const lookDirection = new THREE.Vector3(0, 0, -1);
+            lookDirection.applyQuaternion(this.mesh.quaternion);
+            
+            // Set camera look target
+            const target = cameraPosition.clone().add(lookDirection);
+            this.camera.lookAt(target);
+        } catch (error) {
+            console.error('Error updating camera position:', error);
         }
     }
 
     getPosition() {
-        return this.mesh ? this.mesh.position : new THREE.Vector3();
+        return this.mesh ? this.mesh.position.clone() : new THREE.Vector3();
     }
 
     reset(startPosition) {
-        if (this.mesh) {
+        if (!this.mesh) return;
+        
+        try {
             this.mesh.position.copy(startPosition);
             this.mesh.rotation.set(0, 0, 0);
+            this.updateCameraPosition();
+        } catch (error) {
+            console.error('Error resetting player:', error);
         }
     }
 
     getTurnSpeed() {
         if (!this.mesh) return 0;
-        const rotationDelta = Math.abs(this.mesh.rotation.y - this.lastRotationY);
-        return rotationDelta;
+        return Math.abs(this.mesh.rotation.y - this.lastRotationY);
     }
 } 

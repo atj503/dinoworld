@@ -26,15 +26,22 @@ export class PlayingState extends GameState {
     }
 
     update(deltaTime) {
-        // Update player
-        this.game.player.update(deltaTime, this.game.keys);
+        // Get all static obstacles
+        const obstacles = [
+            ...this.game.level.platforms,
+            ...this.game.level.obstacles,
+            ...this.game.level.trees
+        ];
+        
+        // Update player with obstacles for collision detection
+        this.game.player.update(deltaTime, this.game.keys, obstacles);
         
         // Update physics
         this.game.physics.update(deltaTime);
         
         // Update level (includes enemies)
         const playerPos = this.game.player.getPosition();
-        if (this.game.level.update(playerPos)) {
+        if (this.game.level.update(deltaTime, playerPos)) {
             this.game.stateManager.transition('gameOver');
         }
         

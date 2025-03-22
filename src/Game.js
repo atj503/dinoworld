@@ -13,20 +13,12 @@ export class Game {
 
         // Camera setup
         this.camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
-        this.camera.position.set(0, 5, 12);
-        this.camera.lookAt(0, 0, 0);
-
-        // Renderer setup
-        this.setupRenderer();
-
-        // Lighting setup
-        this.setupLighting();
-
+        
         // Systems setup
         this.physics = new PhysicsSystem();
         this.ui = new UI();
-        this.level = new Level(this.scene, this.ui, this.physics);
-        this.player = new Player(this.scene);
+        this.level = new Level(this.scene, () => this.onRingCollected());
+        this.player = new Player(this.scene, this.camera);
 
         // State management
         this.stateManager = new GameStateManager();
@@ -45,9 +37,19 @@ export class Game {
             ArrowDown: false,
             ArrowRight: false
         };
-
-        // Event listeners
+        
+        // Setup systems
+        this.setupRenderer();
+        this.setupLighting();
         this.setupEventListeners();
+    }
+
+    onRingCollected() {
+        // Check if all rings are collected
+        if (this.level.rings.length === 0) {
+            this.ui.showMessage('Level Complete!');
+            this.stateManager.transition('gameOver');
+        }
     }
 
     setupRenderer() {
@@ -166,73 +168,100 @@ export class Game {
         });
     }
 
-    updateCamera(deltaTime) {
-        const playerPos = this.player.getPosition();
-        const idealOffset = new THREE.Vector3(0, 7, 15);
-        const idealLookat = new THREE.Vector3(0, 2, 0);
-        
-        const playerRotation = this.player.mesh ? this.player.mesh.rotation.y : 0;
-        const turnSpeed = Math.abs(this.player.getTurnSpeed());
-        
-        const currentCameraAngle = Math.atan2(
-            this.camera.position.x - playerPos.x,
-            this.camera.position.z - playerPos.z
-        );
-        
-        const targetAngle = playerRotation + Math.PI;
-        let angleDiff = targetAngle - currentCameraAngle;
-        angleDiff = ((angleDiff + Math.PI) % (Math.PI * 2)) - Math.PI;
-        
-        const maxAngleDiff = Math.PI / 2;
-        const angleRatio = Math.min(Math.abs(angleDiff) / maxAngleDiff, 1);
-        const lerpFactor = Math.min(0.15 + angleRatio * 0.25, 0.4);
-        
-        idealOffset.applyAxisAngle(new THREE.Vector3(0, 1, 0), playerRotation);
-        idealLookat.applyAxisAngle(new THREE.Vector3(0, 1, 0), playerRotation);
-        
-        idealOffset.add(playerPos);
-        idealLookat.add(playerPos);
-        
-        this.camera.position.lerp(idealOffset, lerpFactor);
-        const currentLookat = new THREE.Vector3();
-        currentLookat.copy(playerPos).add(idealLookat);
-        
-        const currentTarget = new THREE.Vector3();
-        this.camera.getWorldDirection(currentTarget);
-        const targetDirection = currentLookat.clone().sub(this.camera.position).normalize();
-        const lookAtLerp = currentTarget.lerp(targetDirection, lerpFactor * 1.5);
-        this.camera.lookAt(this.camera.position.clone().add(lookAtLerp.multiplyScalar(10)));
-    }
-
     async init() {
         try {
+            // Create loading message
+            this.ui.showMessage('Loading game...');
+            
+            // Load level first and ensure we have valid start coordinates
             const playerStart = await this.level.loadLevel(1);
-            if (this.player.mesh) {
-                this.player.reset(new THREE.Vector3(playerStart.x, playerStart.y, playerStart.z));
+            if (!playerStart || typeof playerStart.x === 'undefined') {
+                throw new Error('Invalid player start position from level data');
             }
+            
+            // Wait for player model to initialize
+            await new Promise((resolve, reject) => {
+                let attempts = 0;
+                const maxAttempts = 50; // 5 seconds maximum wait
+                
+                const checkPlayer = () => {
+                    attempts++;
+                    if (this.player && this.player.isLoaded) {
+                        resolve();
+                    } else if (attempts >= maxAttempts) {
+                        reject(new Error('Timeout waiting for player model to load'));
+                    } else {
+                        setTimeout(checkPlayer, 100);
+                    }
+                };
+                checkPlayer();
+            });
+            
+            // Reset player position with safe coordinates
+            const startPosition = new THREE.Vector3(
+                playerStart.x || 0,
+                playerStart.y || 0,
+                playerStart.z || 0
+            );
+            
+            if (this.player && this.player.mesh) {
+                this.player.reset(startPosition);
+            } else {
+                throw new Error('Player or player mesh not initialized');
+            }
+            
+            // Hide loading message
+            this.ui.hideMessage();
+            
+            // Start game
             this.stateManager.transition('playing');
         } catch (error) {
+            console.error('Failed to initialize game:', error);
             this.ui.showError('Unable to load level. Please refresh the page.');
+            throw error; // Re-throw to trigger global error handler
         }
     }
 
     reset() {
-        this.level.reset();
-        this.init();
+        try {
+            if (this.level) {
+                this.level.reset();
+            }
+            this.init().catch(error => {
+                console.error('Failed to reset game:', error);
+                this.ui.showError('Unable to reset game. Please refresh the page.');
+            });
+        } catch (error) {
+            console.error('Failed to reset game:', error);
+            this.ui.showError('Unable to reset game. Please refresh the page.');
+        }
     }
 
     start() {
+        console.log('Starting game...');
         this.init().then(() => {
+            console.log('Game initialized successfully');
+            // Start animation loop
             this.animate();
-        }).catch(() => {
-            this.ui.showError();
+        }).catch(error => {
+            console.error('Failed to start game:', error);
+            this.ui.showError('Unable to start game. Please refresh the page.');
         });
     }
 
     animate() {
-        requestAnimationFrame(() => this.animate());
-        const deltaTime = this.clock.getDelta();
-        this.stateManager.update(deltaTime);
-        this.stateManager.render();
+        try {
+            requestAnimationFrame(() => this.animate());
+            const deltaTime = this.clock.getDelta();
+            
+            // Only update if we have required components
+            if (this.stateManager && this.renderer && this.scene && this.camera) {
+                this.stateManager.update(deltaTime);
+                this.stateManager.render();
+            }
+        } catch (error) {
+            console.error('Error in animation loop:', error);
+            this.ui.showError('Something went wrong. Please refresh the page.');
+        }
     }
 } 

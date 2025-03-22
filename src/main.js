@@ -61,8 +61,8 @@ const ui = new UI();
 // Create level manager with UI
 const level = new Level(scene, ui);
 
-// Create player
-const player = new Player(scene);
+// Create player with camera reference
+const player = new Player(scene, camera);
 
 // Game state
 let gameOver = false;
@@ -150,12 +150,28 @@ function resetGame() {
 // Load initial level
 async function init() {
     try {
+        ui.showMessage('Loading game...');
         const playerStart = await level.loadLevel(1);
-        if (player.mesh) {
+        
+        // Wait for player model to be ready
+        await new Promise(resolve => {
+            const checkPlayer = () => {
+                if (player && player.isLoaded) {
+                    resolve();
+                } else {
+                    setTimeout(checkPlayer, 100);
+                }
+            };
+            checkPlayer();
+        });
+        
+        if (player && player.mesh) {
             player.reset(new THREE.Vector3(playerStart.x, playerStart.y, playerStart.z));
         }
+        
         ui.hideMessage();
     } catch (error) {
+        console.error('Failed to initialize game:', error);
         ui.showError('Unable to load level. Please refresh the page.');
     }
 }
@@ -167,61 +183,72 @@ function animate() {
     if (!gameOver) {
         const delta = clock.getDelta();
         
-        // Update player
-        player.update(delta, keys);
+        // Update player if initialized
+        if (player) {
+            player.update(delta, keys);
+        }
         
-        // Update level (includes enemies and collisions)
-        const playerPos = player.getPosition();
-        if (level.update(playerPos)) {
+        // Get player position safely
+        const playerPos = player ? player.getPosition() : new THREE.Vector3();
+        
+        // Update level only if we have a valid player position
+        if (player && level.update(playerPos)) {
             gameOver = true;
             setTimeout(resetGame, 1500);
         }
         
-        // Update camera to follow player smoothly
-        const idealOffset = new THREE.Vector3(0, 7, 15); // Centered behind player
-        const idealLookat = new THREE.Vector3(0, 2, 0); // Looking slightly above player
-        
-        // Get player rotation and predict future rotation based on turn speed
-        const playerRotation = player.mesh ? player.mesh.rotation.y : 0;
-        const turnSpeed = Math.abs(player.getTurnSpeed());
-        
-        // Calculate current camera angle relative to player
-        const currentCameraAngle = Math.atan2(
-            camera.position.x - playerPos.x,
-            camera.position.z - playerPos.z
-        );
-        
-        // Calculate desired camera angle
-        const targetAngle = playerRotation + Math.PI; // Camera should be behind player
-        
-        // Calculate the shortest angle difference
-        let angleDiff = targetAngle - currentCameraAngle;
-        angleDiff = ((angleDiff + Math.PI) % (Math.PI * 2)) - Math.PI;
-        
-        // Calculate camera speed based on angle difference
-        const maxAngleDiff = Math.PI / 2; // 90 degrees
-        const angleRatio = Math.min(Math.abs(angleDiff) / maxAngleDiff, 1);
-        const lerpFactor = Math.min(0.15 + angleRatio * 0.25, 0.4);
-        
-        // Apply rotation to ideal offset
-        idealOffset.applyAxisAngle(new THREE.Vector3(0, 1, 0), playerRotation);
-        idealLookat.applyAxisAngle(new THREE.Vector3(0, 1, 0), playerRotation);
-        
-        // Add player position to get world space coordinates
-        idealOffset.add(playerPos);
-        idealLookat.add(playerPos);
-        
-        // Apply camera movement with increased speed when falling behind
-        camera.position.lerp(idealOffset, lerpFactor);
-        const currentLookat = new THREE.Vector3();
-        currentLookat.copy(playerPos).add(idealLookat);
-        
-        // Smooth look-at with faster rotation when angle difference is large
-        const currentTarget = new THREE.Vector3();
-        camera.getWorldDirection(currentTarget);
-        const targetDirection = currentLookat.clone().sub(camera.position).normalize();
-        const lookAtLerp = currentTarget.lerp(targetDirection, lerpFactor * 1.5);
-        camera.lookAt(camera.position.clone().add(lookAtLerp.multiplyScalar(10)));
+        // Only update camera if we have a valid player and mesh
+        if (player && player.mesh && player.mesh.position && player.isLoaded) {
+            // Update camera to follow player smoothly
+            const idealOffset = new THREE.Vector3(0, 7, 15); // Centered behind player
+            const idealLookat = new THREE.Vector3(0, 2, 0); // Looking slightly above player
+            
+            // Get player rotation safely
+            const playerRotation = player.mesh.rotation.y;
+            const turnSpeed = player.getTurnSpeed();
+            
+            // Calculate current camera angle relative to player
+            const currentCameraAngle = Math.atan2(
+                camera.position.x - playerPos.x,
+                camera.position.z - playerPos.z
+            );
+            
+            // Calculate desired camera angle
+            const targetAngle = playerRotation + Math.PI; // Camera should be behind player
+            
+            // Calculate the shortest angle difference
+            let angleDiff = targetAngle - currentCameraAngle;
+            angleDiff = ((angleDiff + Math.PI) % (Math.PI * 2)) - Math.PI;
+            
+            // Calculate camera speed based on angle difference
+            const maxAngleDiff = Math.PI / 2; // 90 degrees
+            const angleRatio = Math.min(Math.abs(angleDiff) / maxAngleDiff, 1);
+            const lerpFactor = Math.min(0.15 + angleRatio * 0.25, 0.4);
+            
+            // Apply rotation to ideal offset
+            idealOffset.applyAxisAngle(new THREE.Vector3(0, 1, 0), playerRotation);
+            idealLookat.applyAxisAngle(new THREE.Vector3(0, 1, 0), playerRotation);
+            
+            // Add player position to get world space coordinates
+            idealOffset.add(playerPos);
+            idealLookat.add(playerPos);
+            
+            // Apply camera movement with increased speed when falling behind
+            camera.position.lerp(idealOffset, lerpFactor);
+            const currentLookat = new THREE.Vector3();
+            currentLookat.copy(playerPos).add(idealLookat);
+            
+            // Smooth look-at with faster rotation when angle difference is large
+            const currentTarget = new THREE.Vector3();
+            camera.getWorldDirection(currentTarget);
+            const targetDirection = currentLookat.clone().sub(camera.position).normalize();
+            const lookAtLerp = currentTarget.lerp(targetDirection, lerpFactor * 1.5);
+            camera.lookAt(camera.position.clone().add(lookAtLerp.multiplyScalar(10)));
+        } else {
+            // Default camera position while player is loading
+            camera.position.set(0, 5, 12);
+            camera.lookAt(0, 0, 0);
+        }
     }
     
     renderer.render(scene, camera);
@@ -234,5 +261,26 @@ window.addEventListener('error', (event) => {
 });
 
 // Create and start the game
-const game = new Game();
-game.start();
+window.addEventListener('DOMContentLoaded', () => {
+    try {
+        console.log('Starting game initialization...');
+        const game = new Game();
+        console.log('Game instance created');
+        game.start();
+        console.log('Game started');
+    } catch (error) {
+        console.error('Critical error during game initialization:', error);
+        // Show error on screen
+        const errorDiv = document.createElement('div');
+        errorDiv.style.position = 'fixed';
+        errorDiv.style.top = '50%';
+        errorDiv.style.left = '50%';
+        errorDiv.style.transform = 'translate(-50%, -50%)';
+        errorDiv.style.backgroundColor = 'rgba(0,0,0,0.8)';
+        errorDiv.style.color = 'white';
+        errorDiv.style.padding = '20px';
+        errorDiv.style.borderRadius = '5px';
+        errorDiv.textContent = 'Failed to start game. Please check console and refresh.';
+        document.body.appendChild(errorDiv);
+    }
+});
