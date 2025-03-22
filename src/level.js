@@ -3,8 +3,9 @@ import { Enemy } from './enemy.js';
 import { PhysicsSystem } from './physics/PhysicsSystem.js';
 
 export class Level {
-    constructor(scene, onRingCollected) {
+    constructor(scene, physics, onRingCollected) {
         this.scene = scene;
+        this.physics = physics;
         this.onRingCollected = onRingCollected;
         this.levelData = null;
         this.ground = null;
@@ -13,7 +14,6 @@ export class Level {
         this.platforms = [];
         this.obstacles = [];
         this.trees = [];
-        this.physics = new PhysicsSystem();
         this.textureLoader = new THREE.TextureLoader();
     }
 
@@ -42,8 +42,8 @@ export class Level {
             
             // Create level elements
             await this.createTerrain(levelData.terrain);
-            this.createRings(levelData.rings);
-            this.createEnemies(levelData.enemies);
+            this.createRings(levelData.rings || []);
+            this.createEnemies(levelData.enemies || []);
             
             return levelData.playerStart;
         } catch (error) {
@@ -54,24 +54,25 @@ export class Level {
     }
 
     async createGround() {
-        const { width, depth } = this.levelData.environment.groundSize;
-        const geometry = new THREE.PlaneGeometry(width, depth);
+        // Create a large ground plane
+        const groundSize = 1000;
+        const geometry = new THREE.PlaneGeometry(groundSize, groundSize);
         
-        // Create a procedural texture instead of loading one
+        // Create a procedural texture
         const canvas = document.createElement('canvas');
-        canvas.width = 512;
-        canvas.height = 512;
+        canvas.width = 1024;
+        canvas.height = 1024;
         const context = canvas.getContext('2d');
         
         // Fill with base color
         context.fillStyle = '#4a8505';
         context.fillRect(0, 0, canvas.width, canvas.height);
         
-        // Add noise pattern
-        for (let i = 0; i < 5000; i++) {
+        // Add noise pattern for grass texture
+        for (let i = 0; i < 10000; i++) {
             const x = Math.random() * canvas.width;
             const y = Math.random() * canvas.height;
-            const size = Math.random() * 3 + 1;
+            const size = Math.random() * 4 + 1;
             context.fillStyle = Math.random() > 0.5 ? '#3a7000' : '#5a9010';
             context.fillRect(x, y, size, size);
         }
@@ -79,17 +80,18 @@ export class Level {
         const texture = new THREE.CanvasTexture(canvas);
         texture.wrapS = THREE.RepeatWrapping;
         texture.wrapT = THREE.RepeatWrapping;
-        texture.repeat.set(20, 20);
+        texture.repeat.set(50, 50);
         
         const material = new THREE.MeshStandardMaterial({
             map: texture,
-            color: new THREE.Color(parseInt(this.levelData.environment.groundColor)),
             roughness: 0.8,
-            metalness: 0.2
+            metalness: 0.1,
+            color: 0x88aa88
         });
         
         this.ground = new THREE.Mesh(geometry, material);
         this.ground.rotation.x = -Math.PI / 2;
+        this.ground.position.y = -0.1; // Slightly below 0 to avoid z-fighting
         this.ground.receiveShadow = true;
         this.scene.add(this.ground);
         
@@ -215,7 +217,9 @@ export class Level {
             const windowMaterial = new THREE.MeshStandardMaterial({
                 color: 0x88ccff,
                 emissive: 0x88ccff,
-                emissiveIntensity: 0.5
+                emissiveIntensity: 0.8,
+                metalness: 0.9,
+                roughness: 0.1
             });
             
             const windowSize = { width: 1, height: 1.5, depth: 0.1 };
@@ -223,35 +227,7 @@ export class Level {
             const floorsCount = Math.floor(size.height / 3);
             const windowsPerSide = Math.floor(size.width / 2.5);
             
-            // Create collision walls for each side of the building
-            const wallThickness = 0.5;
-            const walls = [
-                // Front wall
-                new THREE.BoxGeometry(size.width, size.height, wallThickness),
-                // Back wall
-                new THREE.BoxGeometry(size.width, size.height, wallThickness),
-                // Left wall
-                new THREE.BoxGeometry(wallThickness, size.height, size.depth),
-                // Right wall
-                new THREE.BoxGeometry(wallThickness, size.height, size.depth)
-            ];
-            
-            const wallPositions = [
-                [0, 0, size.depth/2],  // Front
-                [0, 0, -size.depth/2], // Back
-                [-size.width/2, 0, 0],  // Left
-                [size.width/2, 0, 0]   // Right
-            ];
-            
-            walls.forEach((wallGeometry, index) => {
-                const wallMesh = new THREE.Mesh(
-                    wallGeometry,
-                    new THREE.MeshStandardMaterial({ visible: false })
-                );
-                wallMesh.position.set(...wallPositions[index]);
-                building.add(wallMesh);
-            });
-            
+            // Create windows for each side
             for (let floor = 0; floor < floorsCount; floor++) {
                 for (let w = 0; w < windowsPerSide; w++) {
                     ['front', 'back', 'left', 'right'].forEach(side => {
@@ -343,51 +319,72 @@ export class Level {
         }
     }
 
-    createRings(ringData) {
+    createRings(ringsData = []) {
+        // Clear existing rings
+        for (const ring of this.rings) {
+            if (ring.geometry) ring.geometry.dispose();
+            if (ring.material) ring.material.dispose();
+            this.scene.remove(ring);
+        }
+        this.rings = [];
+
+        // Create ring geometry and material only once
         const ringGeometry = new THREE.TorusGeometry(1.5, 0.2, 16, 32);
         const ringMaterial = new THREE.MeshStandardMaterial({
             color: 0xffd700,
             metalness: 0.8,
             roughness: 0.2,
             emissive: 0xffd700,
-            emissiveIntensity: 0.4
+            emissiveIntensity: 0.2
         });
-        
-        for (const ringData of ringData) {
+
+        // Create new rings
+        for (const data of ringsData) {
             const ring = new THREE.Mesh(ringGeometry, ringMaterial);
-            ring.position.set(ringData.position.x, ringData.position.y, ringData.position.z);
+            ring.position.set(data.position.x, data.position.y, data.position.z);
             ring.rotation.set(
-                THREE.MathUtils.degToRad(ringData.rotation.x),
-                THREE.MathUtils.degToRad(ringData.rotation.y),
-                THREE.MathUtils.degToRad(ringData.rotation.z)
+                data.rotation?.x || 0,
+                data.rotation?.y || 0,
+                data.rotation?.z || 0
             );
-            
             ring.castShadow = true;
+            ring.receiveShadow = true;
+            
+            // Add to scene and tracking array
             this.scene.add(ring);
             this.rings.push(ring);
             
-            // Add ring to physics system with collision callback
-            this.physics.addBody(ring, 'static', (collidedWith) => {
-                if (collidedWith.userData.isPlayer) {
-                    this.collectRing(ring);
-                }
+            // Add to physics system as static body
+            this.physics.addStaticBody({
+                mesh: ring,
+                type: 'ring',
+                boundingBox: new THREE.Box3().setFromObject(ring)
             });
         }
     }
 
-    createEnemies(enemyData) {
-        for (const enemyData of enemyData) {
-            const enemy = new Enemy(this.scene, enemyData);
+    createEnemies(enemiesData = []) {
+        // Clear existing enemies
+        for (const enemy of this.enemies) {
+            if (enemy.mesh) {
+                if (enemy.mesh.geometry) enemy.mesh.geometry.dispose();
+                if (enemy.mesh.material) enemy.mesh.material.dispose();
+                this.scene.remove(enemy.mesh);
+            }
+        }
+        this.enemies = [];
+
+        // Create new enemies
+        for (const data of enemiesData) {
+            const enemy = new Enemy(this.scene, data);
             this.enemies.push(enemy);
             
-            // Add enemy to physics system
-            this.physics.addBody(enemy.mesh, 'dynamic', (collidedWith) => {
-                if (collidedWith.userData.isPlayer) {
-                    // Handle player collision
-                    if (typeof this.onEnemyCollision === 'function') {
-                        this.onEnemyCollision();
-                    }
-                }
+            // Add to physics system
+            this.physics.addBody({
+                mesh: enemy.mesh,
+                type: 'enemy',
+                update: (deltaTime) => enemy.update(deltaTime),
+                boundingBox: new THREE.Box3().setFromObject(enemy.mesh)
             });
         }
     }
@@ -446,14 +443,35 @@ export class Level {
     }
 
     reset() {
-        this.clearLevel();
-        this.levelData = null;
-        this.ground = null;
+        // Remove all objects from scene
+        while(this.scene.children.length > 0) { 
+            const object = this.scene.children[0];
+            if (object.geometry) {
+                object.geometry.dispose();
+            }
+            if (object.material) {
+                if (Array.isArray(object.material)) {
+                    object.material.forEach(material => material.dispose());
+                } else {
+                    object.material.dispose();
+                }
+            }
+            this.scene.remove(object);
+        }
+
+        // Reset physics system
+        if (this.physics) {
+            this.physics.reset();
+        }
+
+        // Clear arrays
         this.rings = [];
         this.enemies = [];
         this.platforms = [];
         this.obstacles = [];
         this.trees = [];
+        
+        // Reset systems
         this.physics.reset();
         this.textureLoader = new THREE.TextureLoader();
     }

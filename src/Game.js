@@ -17,7 +17,7 @@ export class Game {
         // Systems setup
         this.physics = new PhysicsSystem();
         this.ui = new UI();
-        this.level = new Level(this.scene, () => this.onRingCollected());
+        this.level = new Level(this.scene, this.physics, () => this.onRingCollected());
         this.player = new Player(this.scene, this.camera);
 
         // State management
@@ -71,27 +71,36 @@ export class Game {
 
     setupLighting() {
         // Ambient light
-        const ambientLight = new THREE.AmbientLight(0xffffff, 0.7);
+        const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
         this.scene.add(ambientLight);
 
         // Main directional light (sun)
-        const directionalLight = new THREE.DirectionalLight(0xffffff, 1.2);
-        directionalLight.position.set(5, 8, 2);
+        const directionalLight = new THREE.DirectionalLight(0xffffff, 1.0);
+        directionalLight.position.set(50, 100, 20);
         directionalLight.castShadow = true;
+        
+        // Improve shadow quality
         directionalLight.shadow.mapSize.width = 2048;
         directionalLight.shadow.mapSize.height = 2048;
         directionalLight.shadow.camera.near = 0.5;
-        directionalLight.shadow.camera.far = 50;
-        directionalLight.shadow.camera.left = -20;
-        directionalLight.shadow.camera.right = 20;
-        directionalLight.shadow.camera.top = 20;
-        directionalLight.shadow.camera.bottom = -20;
+        directionalLight.shadow.camera.far = 500;
+        directionalLight.shadow.camera.left = -100;
+        directionalLight.shadow.camera.right = 100;
+        directionalLight.shadow.camera.top = 100;
+        directionalLight.shadow.camera.bottom = -100;
+        directionalLight.shadow.bias = -0.001;
+        
         this.scene.add(directionalLight);
 
         // Fill light
-        const fillLight = new THREE.DirectionalLight(0xffffff, 0.5);
-        fillLight.position.set(-5, 3, -2);
+        const fillLight = new THREE.DirectionalLight(0x8888ff, 0.5);
+        fillLight.position.set(-50, 30, -20);
         this.scene.add(fillLight);
+
+        // Ground bounce light
+        const bounceLight = new THREE.DirectionalLight(0x88aa88, 0.3);
+        bounceLight.position.set(0, -10, 0);
+        this.scene.add(bounceLight);
     }
 
     setupEventListeners() {

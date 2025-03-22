@@ -44,9 +44,6 @@ export class PlayingState extends GameState {
         if (this.game.level.update(deltaTime, playerPos)) {
             this.game.stateManager.transition('gameOver');
         }
-        
-        // Update camera
-        this.game.updateCamera(deltaTime);
     }
 
     render() {

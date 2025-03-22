@@ -129,4 +129,12 @@ export class PhysicsSystem {
         // Update bounding box after position correction
         dynamicBody.updateBoundingBox();
     }
+
+    reset() {
+        // Clear all physics bodies
+        this.bodies.clear();
+        this.staticBodies.clear();
+        this.dynamicBodies.clear();
+        this.collisionCallbacks.clear();
+    }
 } 
